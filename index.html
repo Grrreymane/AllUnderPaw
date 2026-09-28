@@ -1852,9 +1852,11 @@ function treeLayout(focus) {
   const build = c => {
     placed.add(c.id);
     const ps = partnersOf(c); ps.forEach(q => placed.add(q.id));
-    const other = k => { const o = k.dad === c.id ? k.mom : k.dad, j = ps.findIndex(q => q.id === o); return j < 0 ? 99 : j; };
+    // partners sit on alternating sides so each is next to the member: 1st right, 2nd left, 3rd further right…
+    const slot = i => i % 2 === 0 ? i / 2 + 1 : -(i + 1) / 2;
+    const other = k => { const o = k.dad === c.id ? k.mom : k.dad, j = ps.findIndex(q => q.id === o); return j < 0 ? 0 : slot(j); };
     const kids = c.kids.map(C).filter(k => k && mem.has(k.id) && (k.dad === c.id || k.mom === c.id) && !placed.has(k.id)).sort((a, b) => other(a) - other(b) || a.born - b.born);
-    const n = { c, ps, kids: [] };
+    const n = { c, ps, slots: ps.map((q, i) => slot(i)), kids: [] };
     for (const k of kids) if (!placed.has(k.id)) { const kn = build(k); kn.via = other(k); n.kids.push(kn); }
     n.unit = NODE_W * (1 + ps.length);
     n.w = Math.max(n.unit, n.kids.reduce((t, k) => t + k.w, 0));
@@ -1865,7 +1867,8 @@ function treeLayout(focus) {
   for (const r of roots) if (!placed.has(r.id)) trees.push(build(r));
   const place = (n, left, gen) => {
     n.x = left + n.w / 2; n.y = gen * GEN_H;
-    n.mx = n.x - n.unit / 2 + NODE_W / 2;               // the blood member; partners follow at +NODE_W steps
+    const leftN = n.slots.filter(v => v < 0).length;
+    n.mx = n.x - n.unit / 2 + NODE_W * leftN + NODE_W / 2;   // the blood member; partner i sits at mx + slot * NODE_W
     nodes.push(n);
     let l = left + (n.w - n.kids.reduce((t, k) => t + k.w, 0)) / 2;
     for (const k of n.kids) { place(k, l, gen + 1); l += k.w; }
@@ -1889,13 +1892,17 @@ function drawTree(focus) {
   // branches: from the middle of the couple down to each child
   for (const n of T0.nodes) {
     const y = R(oy + n.y);
-    if (n.ps.length) { const a = R(ox + n.mx + 16), b = R(ox + n.mx + NODE_W * n.ps.length - 16); rect(a, y + 15, b - a, 1, PAL.lacq); rect(a, y + 17, b - a, 1, PAL.lacq); }
+    // marriage lines: double red for the current spouse, a single thin line for concubines and former partners
+    n.ps.forEach((q, i) => {
+      const sl = n.slots[i], a = R(ox + n.mx + (sl > 0 ? 16 : sl * NODE_W + 16)), b = R(ox + n.mx + (sl > 0 ? sl * NODE_W - 16 : -16));
+      if (n.c.sp === q.id) { rect(a, y + 15, b - a, 1, PAL.lacq); rect(a, y + 17, b - a, 1, PAL.lacq); } else rect(a, y + 16, b - a, 1, LINE);
+    });
     // one branch per partner, dropping from the middle of that couple
     const groups = new Map();
     for (const k of n.kids) { if (!groups.has(k.via)) groups.set(k.via, []); groups.get(k.via).push(k); }
     const ky = R(oy + n.y + GEN_H - 3), bar = y + 46;
     for (const [j, ks] of groups) {
-      const px = R(ox + (j < n.ps.length ? n.mx + NODE_W * (j + 1) / 2 : n.mx)), py = j < n.ps.length ? y + 18 : y + 40;
+      const px = R(ox + n.mx + j * NODE_W / 2), py = j ? y + 18 : y + 40;
       rect(px, py, 1, bar - py, LINE);
       const a = Math.min(px, R(ox + ks[0].mx)), b = Math.max(px, R(ox + ks[ks.length - 1].mx));
       rect(a, bar, b - a + 1, 1, LINE);
@@ -1914,7 +1921,7 @@ function drawTree(focus) {
       hit(x, y, 32, 32, () => openSheet(c.id));
     }
   };
-  for (const n of T0.nodes) { drawCat(n.c, ox + n.mx, oy + n.y); n.ps.forEach((q, i) => drawCat(q, ox + n.mx + NODE_W * (i + 1), oy + n.y)); }
+  for (const n of T0.nodes) { drawCat(n.c, ox + n.mx, oy + n.y); n.ps.forEach((q, i) => drawCat(q, ox + n.mx + NODE_W * n.slots[i], oy + n.y)); }
   g.restore();
   txt('拖动查看 · 点头像看详情', 90, 308, 5.5, '#8a6a4a', 'center', null, 1, 1);
 }
