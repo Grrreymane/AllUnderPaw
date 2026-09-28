@@ -462,6 +462,33 @@ function mini(c) {
 
 // ============================================================ world state
 let W = null;                                   // the whole game (saved as JSON)
+// Systems plug in through these hooks, so each one can live in its own section (see "systems" further down)
+// and the core loop doesn't need to know about them.
+const SYS = {
+  init: [],      // (W) new game: set up the system's W fields
+  load: [],      // (W) after loading a save: fill in fields that older saves lack
+  season: [],    // () once per season, after lifeTick and before scheduleEvents
+  yearly: [],    // () once per year (spring), after the season hooks
+  life: [],      // (c) once per season for every living cat, inside lifeTick
+  did: [],       // (kind, target, statIdx, ok) after the player does something (see didAct)
+  acts: [],      // (c, A) add / replace / remove actions on a character sheet (A is mutable)
+  tab: [],       // (tab, A) add / replace / remove actions on one of the five tabs
+  stat: [],      // (c, i) -> number added to stat(c, i)
+  opinion: [],   // (a, b, add) extra opinion terms: add(label, n)
+  econ: [],      // (inc, cost) push [label, n] into this season's income / cost lists
+  status: [],    // (c, out) CK-style status chips { n, col, d }
+  sheet: [],     // (c, rows) extra info rows on a character sheet { chip, col, text, fn }
+  goal: [],      // () -> { s, tab, pri } candidates for the objective line (lowest pri wins)
+  widget: [],    // () -> true if it drew the top-right widget (the first one that draws wins)
+  card: [],      // (p) draw extras on the player card (see the layout slots in drawCity)
+  scene: [],     // (tab) draw extras over the scene backdrop of a tab
+  sched: [],     // () after the historical calendar in scheduleEvents
+  modal: {},     // type -> draw(m): new kinds of modal windows
+};
+const runSys = (k, ...a) => { for (const f of SYS[k]) f(...a); };
+// Every player action reports here once its effect happened: kind is a short verb ('trade', 'gift', 'spy' ...),
+// target the cat it was done to (or null), st the stat it used (0 武 1 政 2 交 3 谋, -1 none), ok whether it worked.
+function didAct(kind, target, st, ok) { runSys('did', kind, target || null, st === undefined ? -1 : st, ok !== false); }
 const SEASON = ['春', '夏', '秋', '冬'];
 const yearOf = t => 262 - Math.floor(t / 4);
 const bornAt = yearBC => (262 - yearBC) * 4;
@@ -1447,6 +1474,30 @@ EV.succession = () => {
       W.ap = 2; W.loc = 'home';
     })) };
 };
+
+// ============================================================ systems
+// Each system lives between its own markers and plugs into SYS; keep code for one system inside its section.
+
+// ==== SYS:growth ==== 修行 · 身心 · 家法
+// ---- end growth
+
+// ==== SYS:career ==== 功名 · 家业
+// ---- end career
+
+// ==== SYS:social ==== 人情 · 活的世界
+// ---- end social
+
+// ==== SYS:intrigue ==== 计谋 · 把柄 · 门下
+// ---- end intrigue
+
+// ==== SYS:duel ==== 舌战 · 比剑
+// ---- end duel
+
+// ==== ACT2 ==== 第二幕 · 仲父（咸阳）
+// ---- end act2
+
+// ==== ACT3 ==== 第三幕 · 一统 / 自由模式 / 尾声
+// ---- end act3
 
 // ============================================================ screen + input
 const wrap = document.getElementById('wrap'), cv = document.getElementById('c'), ctx = cv.getContext('2d');
