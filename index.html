@@ -1731,54 +1731,84 @@ function drawFamilyList() {
     charRow(c, y, y0, y1, () => openSheet(c.id), tag);
   });
 }
-// CK-style branching tree of the 狸 bloodline; drag to pan in both directions
+// CK-style branching tree of the 狸 bloodline; drag to pan in both directions.
+// Each blood member stands with their partners to the right (current spouse, or the other parent of their children);
+// children hang from the middle of the couple.
 const NODE_W = 42, GEN_H = 58;
 function treeLayout() {
   const li = Object.values(W.chars).filter(c => c.house === 'li');
   const isLi = id => { const c = C(id); return c && c.house === 'li'; };
-  const kidsOf = c => c.kids.map(C).filter(k => k && k.house === 'li' && (k.dad === c.id || k.mom === c.id)).sort((a, b) => a.born - b.born);
-  // a child with two 狸 parents is drawn under the first one only
-  const placed = new Set(), roots = li.filter(c => !isLi(c.dad) && !isLi(c.mom)).sort((a, b) => a.born - b.born);
-  const nodes = [];
-  const size = c => { if (placed.has(c.id)) return 0; placed.add(c.id); const ks = kidsOf(c).filter(k => !placed.has(k.id)); const n = { c, kids: [] }; n.kids = ks.map(k => { const w = size(k); return w ? k._n : null; }).filter(Boolean); n.w = Math.max(NODE_W, n.kids.reduce((s, k) => s + k.w, 0)); c._n = n; return n.w; };
+  const placed = new Set(), nodes = [];
+  const partnersOf = c => {
+    const ids = [c.sp].concat(c.kids.map(C).filter(Boolean).map(k => k.dad === c.id ? k.mom : k.mom === c.id ? k.dad : null));
+    return [...new Set(ids)].filter(id => id && C(id) && !placed.has(id)).map(C).sort((a, b) => (b.id === c.sp) - (a.id === c.sp) || a.born - b.born);
+  };
+  const build = c => {
+    placed.add(c.id);
+    const ps = partnersOf(c); ps.forEach(q => placed.add(q.id));
+    const other = k => { const o = k.dad === c.id ? k.mom : k.dad, j = ps.findIndex(q => q.id === o); return j < 0 ? 99 : j; };
+    const kids = c.kids.map(C).filter(k => k && k.house === 'li' && (k.dad === c.id || k.mom === c.id) && !placed.has(k.id)).sort((a, b) => other(a) - other(b) || a.born - b.born);
+    const n = { c, ps, kids: [] };
+    for (const k of kids) if (!placed.has(k.id)) { const kn = build(k); kn.via = other(k); n.kids.push(kn); }
+    n.unit = NODE_W * (1 + ps.length);
+    n.w = Math.max(n.unit, n.kids.reduce((t, k) => t + k.w, 0));
+    return n;
+  };
+  const roots = li.filter(c => !isLi(c.dad) && !isLi(c.mom)).sort((a, b) => (b.female ? 0 : 1) - (a.female ? 0 : 1) || a.born - b.born);
+  const trees = [];
+  for (const r of roots) if (!placed.has(r.id)) trees.push(build(r));
+  const place = (n, left, gen) => {
+    n.x = left + n.w / 2; n.y = gen * GEN_H;
+    n.mx = n.x - n.unit / 2 + NODE_W / 2;               // the blood member; partners follow at +NODE_W steps
+    nodes.push(n);
+    let l = left + (n.w - n.kids.reduce((t, k) => t + k.w, 0)) / 2;
+    for (const k of n.kids) { place(k, l, gen + 1); l += k.w; }
+  };
   let x = 0;
-  for (const r of roots) { size(r); if (!r._n) continue; place(r._n, x, 0); x += r._n.w; }
-  function place(n, left, gen) { n.x = left + n.w / 2; n.y = gen * GEN_H; nodes.push(n); let l = left + (n.w - n.kids.reduce((s, k) => s + k.w, 0)) / 2; for (const k of n.kids) { place(k, l, gen + 1); l += k.w; } }
-  for (const c of li) delete c._n;
+  for (const t of trees) { place(t, x, 0); x += t.w + 10; }
   return { nodes, w: x, h: nodes.reduce((m, n) => Math.max(m, n.y), 0) + GEN_H };
 }
 function drawTree() {
   const T0 = treeLayout(), vx = 6, vy = 40, vw = 168, vh = 262;
   if (SCR.key !== 'tree') {
     SCR.key = 'tree';
-    const me = T0.nodes.find(n => n.c.id === W.player) || T0.nodes[0];
+    const me = T0.nodes.find(n => n.c.id === W.player || n.ps.some(q => q.id === W.player)) || T0.nodes[0];
     SCR.x = me ? me.x - vw / 2 : 0; SCR.y = me ? me.y - vh / 2 + 20 : 0;
   }
   SCR.maxX = Math.max(1, T0.w - vw + 20); SCR.max = Math.max(1, T0.h - vh + 20); SCR.minY = 0;
   SCR.x = clamp(SCR.x, 0, SCR.maxX); SCR.y = clamp(SCR.y, 0, SCR.max);
-  const ox = vx + 10 - SCR.x, oy = vy + 6 - SCR.y;
+  const ox = vx + 10 - SCR.x, oy = vy + 6 - SCR.y, LINE = '#8a6a4a';
   rect(vx, vy, vw, vh, '#e8dcc0');
   g.save(); g.beginPath(); g.rect(vx, vy, vw, vh); g.clip();
-  // branches
-  for (const n of T0.nodes) if (n.kids.length) {
-    const px = R(ox + n.x), py = R(oy + n.y + 40), ky = R(oy + n.y + GEN_H - 3);
-    rect(px, py, 1, 5, '#8a6a4a');
-    const a = R(ox + n.kids[0].x), b = R(ox + n.kids[n.kids.length - 1].x);
-    rect(a, py + 5, b - a + 1, 1, '#8a6a4a');
-    for (const k of n.kids) rect(R(ox + k.x), py + 5, 1, ky - py - 5, '#8a6a4a');
-  }
-  // cats
+  // branches: from the middle of the couple down to each child
   for (const n of T0.nodes) {
-    const x = R(ox + n.x - 16), y = R(oy + n.y), c = n.c, me = c.id === W.player;
-    if (x < vx - 40 || x > vx + vw + 8 || y < vy - 50 || y > vy + vh + 8) continue;
-    drawPortrait(c, x, y, 1, me ? PAL.gold : alive(c) ? '#e8d4a8' : '#b8b0a8');
-    if (me) { rect(x - 2, y - 2, 36, 1, PAL.lacq); rect(x - 2, y + 33, 36, 1, PAL.lacq); rect(x - 2, y - 2, 1, 36, PAL.lacq); rect(x + 33, y - 2, 1, 36, PAL.lacq); }
-    const inside = x >= vx - 4 && x + 32 <= vx + vw + 4 && y >= vy - 2 && y + 44 <= vy + vh;
-    if (inside) {
-      txt(c.name.length > 3 ? c.name.slice(0, 3) : c.name, x + 16, y + 38, 5.5, alive(c) ? '#3a2418' : '#8a8078', 'center', null, 1, 1);
-      hit(x, y, 32, 32, () => openSheet(c.id));
+    const y = R(oy + n.y);
+    if (n.ps.length) { const a = R(ox + n.mx + 16), b = R(ox + n.mx + NODE_W * n.ps.length - 16); rect(a, y + 15, b - a, 1, PAL.lacq); rect(a, y + 17, b - a, 1, PAL.lacq); }
+    // one branch per partner, dropping from the middle of that couple
+    const groups = new Map();
+    for (const k of n.kids) { if (!groups.has(k.via)) groups.set(k.via, []); groups.get(k.via).push(k); }
+    const ky = R(oy + n.y + GEN_H - 3), bar = y + 46;
+    for (const [j, ks] of groups) {
+      const px = R(ox + (j < n.ps.length ? n.mx + NODE_W * (j + 1) / 2 : n.mx)), py = j < n.ps.length ? y + 18 : y + 40;
+      rect(px, py, 1, bar - py, LINE);
+      const a = Math.min(px, R(ox + ks[0].mx)), b = Math.max(px, R(ox + ks[ks.length - 1].mx));
+      rect(a, bar, b - a + 1, 1, LINE);
+      for (const k of ks) rect(R(ox + k.mx), bar, 1, ky - bar, LINE);
     }
   }
+  // cats
+  const drawCat = (c, cx, cy) => {
+    const x = R(cx - 16), y = R(cy), me = c.id === W.player, blood = c.house === 'li';
+    if (x < vx - 40 || x > vx + vw + 8 || y < vy - 50 || y > vy + vh + 8) return;
+    drawPortrait(c, x, y, 1, me ? PAL.gold : !alive(c) ? '#b8b0a8' : blood ? '#e8d4a8' : '#d4dcc4');
+    if (me) { rect(x - 2, y - 2, 36, 1, PAL.lacq); rect(x - 2, y + 33, 36, 1, PAL.lacq); rect(x - 2, y - 2, 1, 36, PAL.lacq); rect(x + 33, y - 2, 1, 36, PAL.lacq); }
+    if (x >= vx - 4 && x + 32 <= vx + vw + 4 && y >= vy - 2 && y + 44 <= vy + vh) {
+      const label = blood ? c.name : nm(c);
+      txt(label.length > 4 ? label.slice(0, 4) : label, x + 16, y + 38, 5.5, alive(c) ? '#3a2418' : '#8a8078', 'center', null, 1, 1);
+      hit(x, y, 32, 32, () => openSheet(c.id));
+    }
+  };
+  for (const n of T0.nodes) { drawCat(n.c, ox + n.mx, oy + n.y); n.ps.forEach((q, i) => drawCat(q, ox + n.mx + NODE_W * (i + 1), oy + n.y)); }
   g.restore();
   txt('拖动查看 · 点头像看详情', 90, 308, 5.5, '#8a6a4a', 'center', null, 1, 1);
 }
