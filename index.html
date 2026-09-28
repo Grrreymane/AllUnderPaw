@@ -2228,19 +2228,75 @@ function layerBreak() { present(); g.clearRect(0, 0, W_, H); TQ.length = 0; }
 
 // ============================================================ cover (open index.html#cover, then tools/shot.py -> cover.png)
 let shareEl = null, TW = null;
+// Key art in the layered hero-poster style: a stormy sky with a cloud dragon, a burning horizon and a cat army,
+// the rival looming huge and faint in the clouds, the others stacked below, the 狸 head of house in front.
+function paintKeyArt(CW, CH) {
+  const c = mk(CW, CH), s = c.getContext('2d'); s.imageSmoothingEnabled = false;
+  const F = (x, y, w, h, col) => { s.fillStyle = col; s.fillRect(x, y, w, h); };
+  const hz = R(CH * .68);                                     // horizon line
+  // sky: dark teal at the top, slate in the middle, burning orange at the horizon (dithered bands)
+  const bands = ['#101c28', '#162634', '#1c3040', '#243a4a', '#2e4654', '#3a525c', '#4e5e62', '#6e6a5e', '#9a7454', '#c4804a', '#e0944a'];
+  for (let y = 0; y < hz; y++) {
+    const f = y / hz * (bands.length - 1), i = Math.floor(f), fr = f - i;
+    for (let x = 0; x < CW; x++) F(x, y, 1, 1, (fr > (((x + y) & 1) ? .66 : .33) && bands[i + 1]) ? bands[i + 1] : bands[i]);
+  }
+  // rolling clouds
+  for (let y = 0; y < hz - 8; y++) for (let x = 0; x < CW; x++) {
+    const n = vnoise(x, y * 1.6, 77, 22) * .65 + vnoise(x, y, 91, 7) * .35;
+    if (n > .6) F(x, y, 1, 1, n > .72 ? '#5a7280' : '#3a5462');
+    else if (n < .28 && y < hz * .6) F(x, y, 1, 1, '#0c1620');
+  }
+  // a cloud dragon coiling across the upper right
+  for (let t = 0; t < 1; t += .004) {
+    const x = CW * .42 + t * CW * .56, y = 22 + Math.sin(t * 11) * 12 + t * 10, w = 3 - t * 2;
+    for (let k = -w; k <= w; k++) F(R(x), R(y + k), 1, 1, (k <= -w + 1) ? '#a8c0c8' : '#4a6672');
+    if (Math.floor(t * 250) % 9 === 0) { F(R(x), R(y - w - 2), 1, 2, '#8aa4b0'); }
+  }
+  F(R(CW * .42) - 6, 18, 7, 5, '#2a4150'); F(R(CW * .42) - 7, 17, 2, 2, '#c8e0e8'); F(R(CW * .42) - 10, 14, 2, 4, '#8aa4b0');
+  // lightning
+  const bolt = (x, y, len) => { for (let i = 0; i < len; i++) { F(x, y, 1, 2, '#e8f4ff'); F(x + 1, y, 1, 2, '#7ab0e0'); y += 2; x += (hash2(i, x, 5) < .5 ? -1 : 1) * (i % 3 === 0 ? 2 : 1); } };
+  bolt(R(CW * .08), 30, 34); bolt(R(CW * .9), 44, 28);
+  // horizon glow and the plain
+  for (let y = hz - 4; y < hz + 3; y++) F(0, y, CW, 1, y < hz ? '#f0b060' : '#b8603a');
+  for (let y = hz + 3; y < CH; y++) { const t = (y - hz) / (CH - hz); F(0, y, CW, 1, mixHex('#6a3424', '#1e1216', t)); }
+  // a cat army on the plain: rows of ear-tipped heads, spears and black banners
+  for (let row = 0; row < 3; row++) {
+    const y = hz + 4 + row * 6, col = ['#3a1e18', '#2c1614', '#1e1012'][row];
+    for (let x = (row * 5) % 9; x < CW; x += 7 + (row & 1)) {
+      if (hash2(x, row, 3) < .25) continue;
+      F(x, y, 3, 4, col); F(x, y - 1, 1, 1, col); F(x + 2, y - 1, 1, 1, col);
+      if (hash2(x, row, 9) < .4) F(x + 3, y - 6, 1, 10, '#2a1a14');
+      if (hash2(x, row, 13) < .12) { F(x + 3, y - 12, 1, 12, '#2a1a14'); F(x + 4, y - 12, 6, 5, '#141014'); F(x + 5, y - 11, 4, 1, '#b5312a'); }
+    }
+  }
+  // dust drifting over the field
+  for (let i = 0; i < 90; i++) { const x = hash2(i, 1, 21) * CW | 0, y = hz - 6 + hash2(i, 2, 21) * 26 | 0; F(x, y, 1, 1, i & 1 ? '#e8b070' : '#c07848'); }
+  return c;
+}
 function renderCover() {
-  const CW = 320, CH = 180, S = 6, c = mk(CW, CH); g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+  const CW = 320, CH = 180, S = 6;
   W = TW;
-  g.drawImage(scene('gate'), 0, 0, 180, 112, 0, 0, 320, 199);
-  g.fillStyle = 'rgba(20,14,24,.25)'; g.fillRect(0, 0, CW, CH);
-  const cats = ['yiren', 'lv', 'zhaoji'].map(C);
-  cats.forEach((ct, i) => { g.fillStyle = OUT; g.fillRect(14 + i * 50 - 1, 96 - 1, 44 + 2, 44 + 2); g.fillStyle = '#e8d4a8'; g.fillRect(14 + i * 50, 96, 44, 44); });
+  const c = paintKeyArt(CW, CH); g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+  // the head of the 狸 house for the cover: a fixed tabby-and-white so the art never changes
+  const hero = W.chars.coverhero || mkc({ id: 'coverhero', sur: '狸', name: '伯阳', born: bornAt(290), role: 'noble', robe: 'li', house: 'li', hist: true, immortal: true, loc: 'away',
+    g: { O: ['o'], B: ['B', 'B'], D: ['D', 'D'], A: ['A', 'A'], T: ['Tm', 'Tm'], Sp: ['sp', 'sp'], S: ['S', 's'], W: ['w', 'w'], C: ['C', 'C'], I: ['i', 'i'], L: ['L', 'L'], eye: [.1, .2] } });
+  // figures, back to front: [char, x, y, scale, fade toward the sky]
+  const layers = [[C('lv'), 0, -12, 4, .5], [C('yiren'), 106, 4, 2, 0], [C('pingyuan'), 186, 100, 2, .12], [C('zhaoji'), 38, 60, 2, 0], [hero, 100, 84, 3, 0]];
+  for (const [ch, x, y, k, fade] of layers) {
+    let pc = portrait(ch);
+    if (fade) { const t = mk(32, 32), tx = t.getContext('2d'); tx.drawImage(pc, 0, 0); tx.globalCompositeOperation = 'source-atop'; tx.globalAlpha = fade; tx.fillStyle = '#2e4654'; tx.fillRect(0, 0, 32, 32); pc = t; }
+    g.globalAlpha = fade > .3 ? .8 : 1;
+    g.drawImage(pc, x, y, 32 * k, 32 * k);
+    g.globalAlpha = 1;
+  }
+  // warm rim light along the bottom so the front figure sits in the glow of the field
+  for (let y = CH - 14; y < CH; y++) { g.globalAlpha = (y - (CH - 14)) / 14 * .5; g.fillStyle = '#1e1216'; g.fillRect(0, y, CW, 1); }
+  g.globalAlpha = 1;
   const big = mk(CW * S, CH * S), bx = big.getContext('2d'); bx.imageSmoothingEnabled = false; bx.drawImage(c, 0, 0, CW * S, CH * S);
-  cats.forEach((ct, i) => bx.drawImage(portrait(ct), (14 + i * 50) * S, 96 * S, 44 * S, 44 * S));
-  bx.font = '190px ' + FONT; bx.textAlign = 'center'; bx.lineWidth = 26; bx.strokeStyle = '#1b1622'; bx.lineJoin = 'round';
-  bx.strokeText('一喵天下', 1300, 470); bx.fillStyle = '#ffe08a'; bx.fillText('一喵天下', 1300, 470);
-  bx.font = '64px ' + FONT; bx.lineWidth = 12; bx.strokeText('All Under Paw', 1300, 600); bx.fillStyle = '#f2ead4'; bx.fillText('All Under Paw', 1300, 600);
-  bx.font = '52px ' + FONT; bx.strokeText('押宝秦国质子 · 猫猫王朝模拟', 1300, 720); bx.fillText('押宝秦国质子 · 猫猫王朝模拟', 1300, 720);
+  bx.textAlign = 'center'; bx.lineJoin = 'round'; bx.strokeStyle = '#1b1622';
+  bx.font = '180px ' + FONT; bx.lineWidth = 28; bx.strokeText('一喵天下', 1500, 360); bx.fillStyle = '#ffe08a'; bx.fillText('一喵天下', 1500, 360);
+  bx.font = '60px ' + FONT; bx.lineWidth = 12; bx.strokeText('All Under Paw', 1500, 470); bx.fillStyle = '#f2ead4'; bx.fillText('All Under Paw', 1500, 470);
+  bx.font = '46px ' + FONT; bx.lineWidth = 10; bx.strokeText('押宝秦国质子 · 猫猫王朝模拟', 1500, 560); bx.fillText('押宝秦国质子 · 猫猫王朝模拟', 1500, 560);
   document.body.innerHTML = ''; big.style.cssText = 'position:fixed;left:0;top:0;width:1920px;height:1080px'; document.body.appendChild(big);
   document.title = 'COVER READY';
 }
