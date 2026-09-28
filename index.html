@@ -977,7 +977,11 @@ const EV = {};
 const opt = (t, hint, fx, ok, tr) => ({ t, hint, fx, ok, tr });
 EV.prologue = () => {
   const [a, b, d] = W.flags.prologueKids.map(C), pa = P();
-  const ans = k => ['「立国君是要死人的。我们是做买卖的。」', '「得看本钱多少，几年回本。」', '「得看那位国君，记不记得是谁扶的他。」', '「无数倍。」'][k.st.indexOf(Math.max(...k.st))];
+  // each child answers from their strongest side; no two give the same answer
+  const LINES = ['「立国君是要死人的。我们是做买卖的。」', '「得看本钱多少，几年回本。」', '「得看那位国君，记不记得是谁扶的他。」', '「无数倍。」'];
+  const taken = new Set(), said = new Map();
+  for (const k of [a, b, d]) { const order = [0, 1, 2, 3].sort((i, j) => stat(k, j) - stat(k, i)); const i = order.find(x => !taken.has(x)); taken.add(i); said.set(k, LINES[i]); }
+  const ans = k => said.get(k);
   return { title: '三问', who: [pa.id, a.id, b.id, d.id], big: true,
     text: `狸家的家主${nm(pa)}病了一冬。今天他把三个孩子叫到榻前，靠着枕头问：「种田，能得几倍的利？」「十倍。」「贩珠玉呢？」「百倍。」「那立一国之君呢？」\n谁来接这个家？`,
     opts: [a, b, d].map(k => opt(nm(k) + '：' + ans(k), traitsOf(k).slice(0, 3).join(' ') + ' · ' + STATN.map((s, i) => s + stat(k, i)).join(' '), () => {
@@ -1371,23 +1375,25 @@ window.addEventListener('pagehide', () => { try { if (AC) AC.close(); } catch (e
 
 // ============================================================ drawing helpers
 const TQ = [];
-function txt(s, x, y, size, col, align, stroke, alpha) { TQ.push({ s: String(s), x, y, size: size || 8, col: col || '#ffffff', align: align || 'center', stroke: stroke === undefined ? OUT : stroke, alpha: alpha === undefined ? 1 : alpha }); }
+// f = 1 draws in the plain body font (easier to read in long passages); default is the display font
+function txt(s, x, y, size, col, align, stroke, alpha, f) { TQ.push({ s: String(s), x, y, size: size || 8, col: col || '#ffffff', align: align || 'center', stroke: stroke === undefined ? OUT : stroke, alpha: alpha === undefined ? 1 : alpha, f: f ? 1 : 0 }); }
+const BODY = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC","Source Han Sans SC",sans-serif';
 // glyph widths measured with the real font (per 100px), so wrapping matches what gets drawn
 const MCX = mk(1, 1).getContext('2d'), CWID = new Map();
 let fontReady = false;
 try { (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { fontReady = true; CWID.clear(); }); } catch (e) { fontReady = true; }
-function chW(ch) {
-  let w = CWID.get(ch);
-  if (w === undefined) { MCX.font = '100px ' + FONT; w = MCX.measureText(ch).width / 100; if (fontReady) CWID.set(ch, w); }
+function chW(ch, f) {
+  const k = f ? '' + ch : ch; let w = CWID.get(k);
+  if (w === undefined) { MCX.font = '100px ' + (f ? BODY : FONT); w = MCX.measureText(ch).width / 100; if (fontReady) CWID.set(k, w); }
   return w;
 }
-const tw = (s, size) => { let w = 0; for (const ch of s) w += chW(ch) * size; return w; };
-function wrapT(s, maxW, size) {
+const tw = (s, size, f) => { let w = 0; for (const ch of s) w += chW(ch, f) * size; return w; };
+function wrapT(s, maxW, size, f) {
   const out = [];
   for (const para of String(s).split('\n')) {
     let line = '', w = 0;
     for (const ch of para) {
-      const cw = chW(ch) * size;
+      const cw = chW(ch, f) * size;
       if (w + cw > maxW && line) { if ('，。！？、；：」）》…'.includes(ch)) { out.push(line + ch); line = ''; w = 0; continue; } out.push(line); line = ''; w = 0; }
       line += ch; w += cw;
     }
@@ -1404,7 +1410,7 @@ const BTN = { red: ['#7a1f24', '#b5312a', '#e0513c'], jade: ['#2c5a40', '#3f8a5e
 function btn(x, y, w, h, label, style, fn, sub) {
   const s = BTN[style || 'red'];
   rect(x, y, w, h, OUT); rect(x + 1, y + 1, w - 2, h - 2, s[0]); rect(x + 1, y + 1, w - 2, h - 3, s[1]); rect(x + 2, y + 2, w - 4, 1, s[2]);
-  if (sub) { txt(label, x + 6, y + h / 2 - 3.5, 7, '#ffffff', 'left', OUT); txt(sub, x + 6, y + h / 2 + 4.5, 5.5, style === 'off' ? '#c8c0c4' : '#ffe8c0', 'left', OUT); }
+  if (sub) { txt(label, x + 6, y + h / 2 - 3.5, 7, '#ffffff', 'left', OUT); txt(sub, x + 6, y + h / 2 + 4.5, 5.5, style === 'off' ? '#d8d0d4' : style === 'gold' ? '#3a2418' : '#ffecc8', 'left', null, 1, 1); }
   else txt(label, x + w / 2, y + h / 2 - .5, 7.5, '#ffffff', 'center', OUT);
   if (fn) hit(x, y, w, h, fn);
 }
@@ -1577,10 +1583,10 @@ function opCol(v) { return v >= 40 ? '#3a9a4a' : v >= 10 ? '#6a9a3a' : v > -10 ?
 function drawEvent(m) {
   const e = m.e, x = 6, w = 168;
   const who = (e.who || []).map(C).filter(Boolean).slice(0, 4);
-  const lines = wrapT(e.text, w - 16, 7);
+  const lines = wrapT(e.text, w - 16, 7, 1);
   const optH = e.opts.map(o => o.hint ? 22 : 17);
   const ph = who.length ? 44 : 0;
-  const h = 24 + ph + lines.length * 10 + 6 + optH.reduce((a, b) => a + b + 3, 0) + 6;
+  const h = 24 + ph + lines.length * 11 + 6 + optH.reduce((a, b) => a + b + 3, 0) + 6;
   const y = clamp(R((H - h) / 2), 18, H - h - 2);
   g.globalAlpha = .55; rect(0, 0, W_, H, '#0a0810'); g.globalAlpha = 1;
   HITS = [];
@@ -1593,8 +1599,8 @@ function drawEvent(m) {
     who.forEach((c, i) => { drawPortrait(c, sx + i * gap, cy, 1); txt(nm(c), sx + i * gap + 16, cy + 38, 5.5, '#4a3020', 'center', null); hit(sx + i * gap, cy, 32, 32, () => openSheet(c.id)); });
     cy += ph;
   }
-  lines.forEach((l, i) => txt(l, x + 8, cy + 5 + i * 10, 7, '#3a2418', 'left', null));
-  cy += lines.length * 10 + 6;
+  lines.forEach((l, i) => txt(l, x + 8, cy + 5 + i * 11, 7, '#2a1a10', 'left', null, 1, 1));
+  cy += lines.length * 11 + 6;
   e.opts.forEach((o, i) => {
     const ok = !o.ok || o.ok();
     btn(x + 6, cy, w - 12, optH[i], o.t, ok ? (o.tr ? 'gold' : 'dark') : 'off', () => choose(m, o), o.hint || null);
@@ -1626,7 +1632,7 @@ function drawSheet(m) {
   txt(nm(c), 80, 32, 10, '#3a2418', 'left', null);
   const L = catLook(c);
   const rt = relTo(c);
-  txt(`${ageOf(c)}岁 · ${c.female ? '女' : '男'} · ${L.coat}`, 80, 45, 6, '#6a4a30', 'left', null);
+  txt(`${ageOf(c)}岁 · ${c.female ? '女' : '男'} · ${L.coat}`, 80, 45, 6, '#5a3a20', 'left', null, 1, 1);
   const role = c.id === W.player ? RANKS[W.rank] : ({ ruler: '国君', noble: '贵族', minister: '重臣', shi: '士', hostage: '质子', general: '将军', merchant: '商贾', commoner: '平民', dancer: '舞姬' })[c.role] || '';
   txt(`${c.house === 'li' ? '狸氏' : c.state + '国'} · ${W.ret.includes(c.id) ? '门客' : role}${rt ? ' · 你的' + rt : ''}${c.dead !== null ? ' · 已故' : ''}`, 80, 55, 6, rt ? '#94562f' : '#6a4a30', 'left', null);
   if (c.id !== W.player && alive(c)) {
@@ -1656,7 +1662,7 @@ function drawSheet(m) {
   relLine('子女', c.kids);
   if (c.id === W.player || p.lov.includes(c.id)) relLine('情猫', c.lov.filter(id => c.id === W.player || id === W.player));
   const secs = secretsAbout(c).filter(s => knows(s));
-  for (const s of secs.slice(0, 2)) { g.drawImage(ICON.seal, 10, ty + 1); const ls = wrapT(secretText(s), 150, 6); ls.forEach((l, i) => txt(l, 20, ty + 5 + i * 9, 6, '#a03050', 'left', null)); ty += ls.length * 9 + 3; }
+  for (const s of secs.slice(0, 2)) { g.drawImage(ICON.seal, 10, ty + 1); const ls = wrapT(secretText(s), 150, 6, 1); ls.forEach((l, i) => txt(l, 20, ty + 5 + i * 9, 6, '#a03050', 'left', null, 1, 1)); ty += ls.length * 9 + 3; }
   if (c.preg && (c.house === 'li' || c.id === W.player || c.sp === W.player)) { txt('有孕在身', 10, ty + 5, 6, '#c06a8a', 'left', null); ty += 10; }
   // actions
   const acts = charActions(c);
@@ -1681,8 +1687,8 @@ function listRows(items, y0, y1, key, drawRow) {
 function charRow(c, y, y0, y1, fn, extra) {
   drawPortrait(c, 12, y + 2, 1);
   txt(nm(c), 50, y + 10, 7.5, alive(c) ? '#3a2418' : '#8a8288', 'left', null);
-  txt(`${ageOf(c)}岁 ${c.female ? '女' : '男'} · ${catLook(c).coat}${extra ? ' · ' + extra : ''}`, 50, y + 20, 5.5, '#6a4a30', 'left', null);
-  txt(traitsOf(c).slice(0, 4).join(' '), 50, y + 29, 5.5, '#8a6a4a', 'left', null);
+  txt(`${ageOf(c)}岁 ${c.female ? '女' : '男'} · ${catLook(c).coat}${extra ? ' · ' + extra : ''}`, 50, y + 20, 5.5, '#5a3a20', 'left', null, 1, 1);
+  txt(traitsOf(c).slice(0, 4).join(' '), 50, y + 29, 5.5, '#7a5a3a', 'left', null, 1, 1);
   if (c.id !== W.player && alive(c)) { const o = opinion(c, P()); txt((o > 0 ? '+' : '') + o, 168, y + 10, 6.5, opCol(o), 'right', null); }
   if (y + 30 > y0 && y < y1) hit(8, Math.max(y, y0), 164, Math.min(34, y1 - Math.max(y, y0)), fn);
 }
@@ -1717,7 +1723,7 @@ function drawWhy(m) {
   paper(18, y, 144, h);
   txt(nm(c) + '对你的看法', 90, y + 12, 7.5, '#3a2418', 'center', null);
   if (!m.why.length) txt('没什么特别的看法', 90, y + 30, 6.5, '#8a6a4a', 'center', null);
-  m.why.forEach(([l, v], i) => { txt(l, 28, y + 28 + i * 11, 6.5, '#4a3020', 'left', null); txt((v > 0 ? '+' : '') + v, 152, y + 28 + i * 11, 6.5, opCol(v * 2), 'right', null); });
+  m.why.forEach(([l, v], i) => { txt(l, 28, y + 28 + i * 11, 6.5, '#4a3020', 'left', null, 1, 1); txt((v > 0 ? '+' : '') + v, 152, y + 28 + i * 11, 6.5, opCol(v * 2), 'right', null); });
   btn(60, y + h - 20, 60, 15, '好', 'dark', () => { MODAL.splice(MODAL.indexOf(m), 1); });
   hit(0, 0, W_, H, () => { MODAL.splice(MODAL.indexOf(m), 1); });
   HITS.unshift(HITS.pop());
@@ -1922,10 +1928,10 @@ function present() {
 }
 const TXC = new Map();
 function textSprite(t) {
-  const key = t.s + '|' + t.size + '|' + t.col + '|' + t.stroke + '|' + K;
+  const key = t.s + '|' + t.size + '|' + t.col + '|' + t.stroke + '|' + K + '|' + t.f;
   let c = TXC.get(key); if (c) return c;
   if (TXC.size > 600) TXC.clear();
-  const m = document.createElement('canvas'), x = m.getContext('2d'), font = t.size * K + 'px ' + FONT;
+  const m = document.createElement('canvas'), x = m.getContext('2d'), font = t.size * K + 'px ' + (t.f ? BODY : FONT);
   const r = t.stroke ? Math.max(.75, t.size * .14) * K : 0, pad = Math.ceil(r) + 2;
   x.font = font; m.width = Math.ceil(x.measureText(t.s).width) + pad * 2; m.height = Math.ceil(t.size * K * 1.5) + pad * 2;
   x.font = font; x.textBaseline = 'middle'; x.textAlign = 'left';
