@@ -2158,19 +2158,33 @@ function hintTab() {
   if (opinion(yr, p) < 25 || !W.flags.knowHuayang) return 'people';
   return null;
 }
+// The title screen is the same hero poster as the cover, laid out tall
+let TITLEART = null;
 function drawTitle() {
-  g.drawImage(scene('palace'), 0, 17, 180, 112);
-  rect(0, 129, W_, 191, '#2a2030');
-  g.fillStyle = 'rgba(20,14,24,.35)'; g.fillRect(0, 17, W_, 112);
-  txt('一喵天下', 90, 62, 22, '#ffe08a', 'center', PAL.jiang);
-  txt('All Under Paw', 90, 84, 8, '#f2ead4', 'center', OUT);
-  if (TW) { ['yiren', 'lv', 'zhaoji'].forEach((id, i) => { const c = TW.chars[id]; if (c) { const Wb = W; W = TW; drawPortrait(c, 28 + i * 44, 140, 1); txt(nm(c), 44 + i * 44, 180, 6, '#c8b8a8', 'center', null); W = Wb; } }); }
-  txt('前262年，邯郸。', 90, 196, 7, '#c8b8a8', 'center', null);
-  txt('押宝一位落魄的秦国质子。', 90, 207, 7, '#c8b8a8', 'center', null);
+  if (!TITLEART && TW) {
+    const Wb = W; W = TW;
+    const c = paintKeyArt(180, 232), x = c.getContext('2d'); x.imageSmoothingEnabled = false;
+    const hero = coverHero();
+    const layers = [[C('lv'), -14, -8, 3, .5], [C('yiren'), 100, 20, 2, 0], [C('pingyuan'), 118, 86, 2, .12], [C('zhaoji'), 0, 78, 2, 0], [hero, 42, 116, 3, 0]];
+    for (const [ch, lx, ly, k, fade] of layers) {
+      let pc = portrait(ch);
+      if (fade) { const t = mk(32, 32), tx = t.getContext('2d'); tx.drawImage(pc, 0, 0); tx.globalCompositeOperation = 'source-atop'; tx.globalAlpha = fade; tx.fillStyle = '#2e4654'; tx.fillRect(0, 0, 32, 32); pc = t; }
+      x.globalAlpha = fade > .3 ? .8 : 1; x.drawImage(pc, lx, ly, 32 * k, 32 * k); x.globalAlpha = 1;
+    }
+    for (let y = 196; y < 232; y++) { x.globalAlpha = (y - 196) / 36; x.fillStyle = '#2a2030'; x.fillRect(0, y, 180, 1); }
+    x.globalAlpha = 1;
+    W = Wb; TITLEART = c;
+  }
+  rect(0, 0, W_, H, '#2a2030');
+  if (TITLEART) g.drawImage(TITLEART, 0, 17);
+  txt('一喵天下', 90, 232, 22, '#ffe08a', 'center', PAL.jiang);
+  txt('All Under Paw', 90, 251, 7.5, '#f2ead4', 'center', OUT);
   const saved = load('w', null);
-  btn(40, 222, 100, 22, saved ? '重新开始' : '开始', saved ? 'dark' : 'red', () => { newGame(); state = 'game'; saveGame(); });
-  if (saved) btn(40, 250, 100, 22, '继续', 'red', () => { if (loadGame()) state = 'game'; });
-  txt('点猫看详情 · 每季两件事', 90, 300, 6, '#8a7a8a', 'center', null);
+  if (saved) {
+    btn(40, 262, 100, 20, '继续', 'red', () => { if (loadGame()) state = 'game'; });
+    btn(40, 286, 100, 17, '重新开始', 'dark', () => { newGame(); state = 'game'; saveGame(); });
+  } else btn(40, 268, 100, 22, '开始', 'red', () => { newGame(); state = 'game'; saveGame(); });
+  txt('前262年，邯郸。押宝一位落魄的秦国质子。', 90, 312, 5.5, '#8a7a8a', 'center', null, 1, 1);
 }
 function drawToasts() {
   TOASTS.forEach((t, i) => {
@@ -2273,13 +2287,16 @@ function paintKeyArt(CW, CH) {
   for (let i = 0; i < 90; i++) { const x = hash2(i, 1, 21) * CW | 0, y = hz - 6 + hash2(i, 2, 21) * 26 | 0; F(x, y, 1, 1, i & 1 ? '#e8b070' : '#c07848'); }
   return c;
 }
+// the head of the 狸 house for the key art: a fixed tabby-and-white so it never changes (needs W = TW)
+function coverHero() {
+  return W.chars.coverhero || mkc({ id: 'coverhero', sur: '狸', name: '伯阳', born: bornAt(290), role: 'noble', robe: 'li', house: 'li', hist: true, immortal: true, loc: 'away',
+    g: { O: ['o'], B: ['B', 'B'], D: ['D', 'D'], A: ['A', 'A'], T: ['Tm', 'Tm'], Sp: ['sp', 'sp'], S: ['S', 's'], W: ['w', 'w'], C: ['C', 'C'], I: ['i', 'i'], L: ['L', 'L'], eye: [.1, .2] } });
+}
 function renderCover() {
   const CW = 320, CH = 180, S = 6;
   W = TW;
   const c = paintKeyArt(CW, CH); g = c.getContext('2d'); g.imageSmoothingEnabled = false;
-  // the head of the 狸 house for the cover: a fixed tabby-and-white so the art never changes
-  const hero = W.chars.coverhero || mkc({ id: 'coverhero', sur: '狸', name: '伯阳', born: bornAt(290), role: 'noble', robe: 'li', house: 'li', hist: true, immortal: true, loc: 'away',
-    g: { O: ['o'], B: ['B', 'B'], D: ['D', 'D'], A: ['A', 'A'], T: ['Tm', 'Tm'], Sp: ['sp', 'sp'], S: ['S', 's'], W: ['w', 'w'], C: ['C', 'C'], I: ['i', 'i'], L: ['L', 'L'], eye: [.1, .2] } });
+  const hero = coverHero();
   // figures, back to front: [char, x, y, scale, fade toward the sky]
   const layers = [[C('lv'), 0, -12, 4, .5], [C('yiren'), 106, 4, 2, 0], [C('pingyuan'), 186, 100, 2, .12], [C('zhaoji'), 38, 60, 2, 0], [hero, 100, 84, 3, 0]];
   for (const [ch, x, y, k, fade] of layers) {
