@@ -2158,30 +2158,28 @@ function hintTab() {
   if (opinion(yr, p) < 25 || !W.flags.knowHuayang) return 'people';
   return null;
 }
-// The title screen is the same hero poster as the cover, laid out tall
-let TITLEART = null;
+// The title screen shows the painted key art (art/title.jpg) at full resolution behind the pixel UI
+const TITLE_IMG = new Image(); TITLE_IMG.src = 'art/title.jpg';
+function drawTitleArt() {
+  if (!(TITLE_IMG.complete && TITLE_IMG.naturalWidth)) return;
+  const iw = TITLE_IMG.naturalWidth, ih = TITLE_IMG.naturalHeight, sc = Math.max(cv.width / iw, cv.height / ih);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(TITLE_IMG, (cv.width - iw * sc) / 2, 0, iw * sc, ih * sc);
+  ctx.imageSmoothingEnabled = false;
+}
 function drawTitle() {
-  if (!TITLEART && TW) {
-    const Wb = W; W = TW;
-    const c = paintKeyArt(180, 232), x = c.getContext('2d'); x.imageSmoothingEnabled = false;
-    coverHero(); const F = keyFigures();
-    for (const [f, fx, fy, fade] of [[F.lv, -18, -6, .45], [F.yiren, 108, 8, 0], [F.pingyuan, 110, 82, .1], [F.zhaoji, -6, 66, 0], [F.hero, 30, 108, 0]]) {
-      x.globalAlpha = fade > .3 ? .85 : 1; x.drawImage(fade ? fadeTo(f, '#2e4654', fade) : f, fx, fy); x.globalAlpha = 1;
-    }
-    for (let y = 196; y < 232; y++) { x.globalAlpha = (y - 196) / 36; x.fillStyle = '#2a2030'; x.fillRect(0, y, 180, 1); }
-    x.globalAlpha = 1;
-    W = Wb; TITLEART = c;
-  }
-  rect(0, 0, W_, H, '#2a2030');
-  if (TITLEART) g.drawImage(TITLEART, 0, 17);
-  txt('一喵天下', 90, 232, 22, '#ffe08a', 'center', PAL.jiang);
-  txt('All Under Paw', 90, 251, 7.5, '#f2ead4', 'center', OUT);
+  g.clearRect(0, 0, W_, H);
+  for (let y = 244; y < H; y++) { g.globalAlpha = Math.min(.8, (y - 244) / 30); g.fillStyle = '#120c14'; g.fillRect(0, y, W_, 1); }
+  g.globalAlpha = 1;
+  // the title rises out of the setting sun; the buttons sit on the dark field below
+  txt('一喵天下', 90, 128, 24, '#fff2c0', 'center', PAL.jiang);
+  txt('All Under Paw', 90, 148, 8, '#fff6dc', 'center', OUT);
   const saved = load('w', null);
   if (saved) {
-    btn(40, 262, 100, 20, '继续', 'red', () => { if (loadGame()) state = 'game'; });
-    btn(40, 286, 100, 17, '重新开始', 'dark', () => { newGame(); state = 'game'; saveGame(); });
-  } else btn(40, 268, 100, 22, '开始', 'red', () => { newGame(); state = 'game'; saveGame(); });
-  txt('前262年，邯郸。押宝一位落魄的秦国质子。', 90, 312, 5.5, '#8a7a8a', 'center', null, 1, 1);
+    btn(40, 266, 100, 19, '继续', 'red', () => { if (loadGame()) state = 'game'; });
+    btn(40, 288, 100, 16, '重新开始', 'dark', () => { newGame(); state = 'game'; saveGame(); });
+  } else btn(40, 272, 100, 22, '开始', 'red', () => { newGame(); state = 'game'; saveGame(); });
+  txt('前262年，邯郸。押宝一位落魄的秦国质子。', 90, 312, 5.5, '#b8a8b8', 'center', null, 1, 1);
 }
 function drawToasts() {
   TOASTS.forEach((t, i) => {
@@ -2219,7 +2217,7 @@ function render() {
   TQ.length = 0; HITS = [];
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#0b1020'; ctx.fillRect(0, 0, cv.width, cv.height);
   g.imageSmoothingEnabled = false; g.globalAlpha = 1;
-  rect(0, 0, W_, H, '#2a2030');
+  if (state === 'title') drawTitleArt(); else rect(0, 0, W_, H, '#2a2030');
   if (state === 'title') drawTitle();
   else {
     drawCity();
@@ -2238,221 +2236,24 @@ function render() {
 function layerBreak() { present(); g.clearRect(0, 0, W_, H); TQ.length = 0; }
 
 // ============================================================ cover (open index.html#cover, then tools/shot.py -> cover.png)
-let shareEl = null, TW = null;
-// Key art in the layered hero-poster style: a stormy sky with a cloud dragon, a burning horizon and a cat army,
-// the rival looming huge and faint in the clouds, the others stacked below, the 狸 head of house in front.
-function paintKeyArt(CW, CH) {
-  const c = mk(CW, CH), s = c.getContext('2d'); s.imageSmoothingEnabled = false;
-  const F = (x, y, w, h, col) => { s.fillStyle = col; s.fillRect(x, y, w, h); };
-  const hz = R(CH * .68);                                     // horizon line
-  // sky: dark teal at the top, slate in the middle, burning orange at the horizon (dithered bands)
-  const bands = ['#101c28', '#162634', '#1c3040', '#243a4a', '#2e4654', '#3a525c', '#4e5e62', '#6e6a5e', '#9a7454', '#c4804a', '#e0944a'];
-  for (let y = 0; y < hz; y++) {
-    const f = y / hz * (bands.length - 1), i = Math.floor(f), fr = f - i;
-    for (let x = 0; x < CW; x++) F(x, y, 1, 1, (fr > (((x + y) & 1) ? .66 : .33) && bands[i + 1]) ? bands[i + 1] : bands[i]);
-  }
-  // rolling clouds
-  for (let y = 0; y < hz - 8; y++) for (let x = 0; x < CW; x++) {
-    const n = vnoise(x, y * 1.6, 77, 22) * .65 + vnoise(x, y, 91, 7) * .35;
-    if (n > .6) F(x, y, 1, 1, n > .72 ? '#5a7280' : '#3a5462');
-    else if (n < .28 && y < hz * .6) F(x, y, 1, 1, '#0c1620');
-  }
-  // a cloud dragon coiling across the upper right
-  for (let t = 0; t < 1; t += .004) {
-    const x = CW * .42 + t * CW * .56, y = 22 + Math.sin(t * 11) * 12 + t * 10, w = 3 - t * 2;
-    for (let k = -w; k <= w; k++) F(R(x), R(y + k), 1, 1, (k <= -w + 1) ? '#a8c0c8' : '#4a6672');
-    if (Math.floor(t * 250) % 9 === 0) { F(R(x), R(y - w - 2), 1, 2, '#8aa4b0'); }
-  }
-  F(R(CW * .42) - 6, 18, 7, 5, '#2a4150'); F(R(CW * .42) - 7, 17, 2, 2, '#c8e0e8'); F(R(CW * .42) - 10, 14, 2, 4, '#8aa4b0');
-  // lightning
-  const bolt = (x, y, len) => { for (let i = 0; i < len; i++) { F(x, y, 1, 2, '#e8f4ff'); F(x + 1, y, 1, 2, '#7ab0e0'); y += 2; x += (hash2(i, x, 5) < .5 ? -1 : 1) * (i % 3 === 0 ? 2 : 1); } };
-  bolt(R(CW * .08), 30, 34); bolt(R(CW * .9), 44, 28);
-  // horizon glow and the plain
-  for (let y = hz - 4; y < hz + 3; y++) F(0, y, CW, 1, y < hz ? '#f0b060' : '#b8603a');
-  for (let y = hz + 3; y < CH; y++) { const t = (y - hz) / (CH - hz); F(0, y, CW, 1, mixHex('#6a3424', '#1e1216', t)); }
-  // a cat army on the plain: rows of ear-tipped heads, spears and black banners
-  for (let row = 0; row < 3; row++) {
-    const y = hz + 4 + row * 6, col = ['#3a1e18', '#2c1614', '#1e1012'][row];
-    for (let x = (row * 5) % 9; x < CW; x += 7 + (row & 1)) {
-      if (hash2(x, row, 3) < .25) continue;
-      F(x, y, 3, 4, col); F(x, y - 1, 1, 1, col); F(x + 2, y - 1, 1, 1, col);
-      if (hash2(x, row, 9) < .4) F(x + 3, y - 6, 1, 10, '#2a1a14');
-      if (hash2(x, row, 13) < .12) { F(x + 3, y - 12, 1, 12, '#2a1a14'); F(x + 4, y - 12, 6, 5, '#141014'); F(x + 5, y - 11, 4, 1, '#b5312a'); }
-    }
-  }
-  // dust drifting over the field
-  for (let i = 0; i < 90; i++) { const x = hash2(i, 1, 21) * CW | 0, y = hz - 6 + hash2(i, 2, 21) * 26 | 0; F(x, y, 1, 1, i & 1 ? '#e8b070' : '#c07848'); }
-  return c;
-}
-// ============================================================ key-art figures: posed half-body cats, drawn natively (not scaled portraits)
-// Fur is sampled from the same genetics as the portraits, so everyone keeps their markings.
-function gCapsule(G, x0, y0, x1, y1, r0, r1, col) {
-  const n = Math.max(2, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 1.5));
-  for (let i = 0; i <= n; i++) { const t = i / n; G.ell(lerp(x0, x1, t), lerp(y0, y1, t), lerp(r0, r1, t), lerp(r0, r1, t), col); }
-}
-function gPath(G, pts, r0, r1, col) { for (let i = 0; i < pts.length - 1; i++) { const t0 = i / (pts.length - 1), t1 = (i + 1) / (pts.length - 1); gCapsule(G, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], lerp(r0, r1, t0), lerp(r0, r1, t1), col); } }
-function bez(p0, p1, p2, n) { const o = []; for (let i = 0; i <= n; i++) { const t = i / n, a = (1 - t) * (1 - t), b = 2 * (1 - t) * t, c = t * t; o.push([a * p0[0] + b * p1[0] + c * p2[0], a * p0[1] + b * p1[1] + c * p2[1]]); } return o; }
-// a cat head at any size; face turns it (-1 looking to the viewer's left … 1 right); mood: 'calm' | 'fierce' | 'sly' | 'soft' | 'down'
-function gHead(G, L, seed, cx, cy, R, face, mood, hat) {
-  const fur = (x, y, reg) => furAt(L, clamp(Math.floor(16 + (x + .5 - cx) / R * 9.3 - face * 1.6), 0, 31), clamp(Math.floor(15 + (y + .5 - cy) / R * 7.7), 0, 31), reg, seed);
-  const ear = (sx) => {
-    const k = 1 - Math.max(0, sx * face) * .3;                  // the far ear looks a little smaller
-    const bx = cx + sx * R * .78 + face * R * .12, ix = cx + sx * R * .18 + face * R * .1, tx = cx + sx * R * .86 + face * R * .06, ty = cy - R * (1.02 + .5 * k);
-    G.tri(bx, cy - R * .2, ix, cy - R * .78, tx, ty, (x, y) => fur(x, y, 'ear'));
-    G.tri(bx - sx * R * .12, cy - R * .3, ix + sx * R * .14, cy - R * .7, tx - sx * R * .06, ty + R * .22, L.eu === 'black' && !L.allWhite ? '#a86e7a' : '#f0a4ae');
-  };
-  if (hat === 'ji') G.ell(cx - face * R * .2, cy - R * .72, R * .5, R * .36, shade(fur(cx, cy - R * .6, 'ear'), -22));
-  G.ell(cx, cy, R, R * .86, (x, y) => fur(x, y, 'head'));
-  if (L.long) for (const sx of [-1, 1]) G.tri(cx + sx * R * 1.08, cy + R * .28, cx + sx * R * .7, cy + R * .05, cx + sx * R * .72, cy + R * .6, (x, y) => fur(x, y, 'head'));
-  if (hat === 'jin') G.ell(cx + face * R * .1, cy - R * .72, R * .56, R * .3, PAL.he);
-  ear(-1); ear(1);
-  const fx = cx + face * R * .26;
-  G.ell(fx, cy + R * .44, R * .44, R * .28, (x, y) => fur(x, y, 'muzzle'));
-  // eyes: almond, slit pupils, a highlight; mood shapes the lids and brows
-  const er = R * (mood === 'sly' ? .13 : .17), ey = cy + R * .02;
-  for (const sx of [-1, 1]) {
-    const ex = fx + sx * R * .38 * (1 - Math.max(0, sx * face) * .35), iris = EYE[sx < 0 ? L.eyeL : L.eyeR];
-    G.ell(ex, ey, er * 1.35 + 1, er + 1, OUT);
-    G.ell(ex, ey, er * 1.35, er, (x, y) => y + .5 > ey + er * .2 ? shade(iris, -30) : iris);
-    G.rect(Math.round(ex - .5), Math.round(ey - er * .8), Math.max(1, Math.round(er * .35)), Math.max(2, Math.round(er * 1.6)), OUT);
-    if (mood === 'sly' || mood === 'down') G.rect(Math.round(ex - er * 1.4), Math.round(ey - er - 1), Math.round(er * 2.8), Math.max(1, Math.round(er * .7)), shade(fur(ex, ey - er, 'head'), -40));
-    // brows
-    const bc = shade(fur(ex, ey - er * 2, 'head'), -46), tilt = mood === 'fierce' || mood === 'sly' ? 1 : mood === 'soft' || mood === 'down' ? -1 : 0;
-    for (let i = 0; i < Math.round(er * 2.2); i++) G.set(Math.round(ex - sx * er + sx * i), Math.round(ey - er * 1.9 + tilt * (i - er) * .35 * -1), bc);
-  }
-  // nose and mouth
-  const ny = cy + R * .3;
-  G.tri(fx - R * .1, ny, fx + R * .1, ny, fx, ny + R * .1, '#e88a98');
-  const mc = lum(fur(fx, ny + R * .2, 'muzzle')) > .55 ? '#8a6a70' : OUT;
-  G.set(Math.round(fx), Math.round(ny + R * .14), mc);
-  for (const sx of [-1, 1]) { G.set(Math.round(fx + sx * R * .08), Math.round(ny + R * .2), mc); G.set(Math.round(fx + sx * R * .16), Math.round(ny + R * .17), mc); }
-  // headgear
-  const top = cy - R * .86;
-  if (hat === 'guan' || hat === 'gaoguan') {
-    G.ell(cx + face * R * .1, top + R * .02, R * .2, R * .18, shade(fur(cx, cy - R * .7, 'head'), -14));
-    const hw = R * .26;
-    if (hat === 'guan') G.rect(Math.round(cx + face * R * .1 - hw), Math.round(top - R * .3), Math.round(hw * 2), Math.round(R * .3), PAL.ink);
-    else G.tri(cx - hw, top, cx + hw + face * 2, top, cx + hw * .6 + face * 3, top - R * .6, PAL.ink);
-    G.rect(Math.round(cx - R * .7), Math.round(top - R * .06), Math.round(R * 1.4), Math.max(1, Math.round(R * .06)), PAL.gold);
-  }
-  if (hat === 'ji') { G.rect(Math.round(cx - R * .8), Math.round(top - R * .1), Math.round(R * 1.6), Math.max(1, Math.round(R * .07)), PAL.gold); G.ell(cx - R * .82, top - R * .06, R * .1, R * .1, PAL.jade); G.ell(cx + R * .82, top - R * .06, R * .1, R * .1, PAL.lacq); }
-  return { fx, ny };
-}
-function gWhiskers(cv, cx, cy, R, face, L) {
-  const x = cv.getContext('2d'), fx = cx + face * R * .26, wy = cy + R * .4, len = R * .5;
-  x.fillStyle = lum(L.main) > .6 ? 'rgba(90,80,90,.7)' : 'rgba(239,233,223,.6)';
-  for (const sx of [-1, 1]) for (const dy of [-1.5, 1]) for (let i = 0; i < len; i++) x.fillRect(Math.round(fx + sx * (R * .32 + i)), Math.round(wy + dy + i * dy * .12), 1, 1);
-}
-// robe: shoulders + a torso that widens downward, y-shaped crossed collar with a trim band, a sash with a bronze hook
-function gRobe(G, cx, top, w, h, robe, trim) {
-  // lit from the upper left: lighter left edge, darker right third, dithered hem
-  const body = (x, y) => { let c = robe; const dx = (x + .5 - cx) / w; if (dx > .18) c = shade(robe, -16); else if (dx < -.36) c = shade(robe, 12); if (y > top + h * .78 && ((x + y) & 1)) c = shade(c, -10); return c; };
-  const sy = top + w * .28, nw = w * .2;
-  G.tri(cx - nw, top, cx + nw, top, cx - w * .5, sy, body); G.tri(cx + nw, top, cx + w * .5, sy, cx - w * .5, sy, body);
-  G.ell(cx - w * .42, sy - 1, w * .12, w * .1, body); G.ell(cx + w * .42, sy - 1, w * .12, w * .1, body);
-  G.tri(cx - w * .5, sy, cx + w * .5, sy, cx + w * .62, top + h, body); G.tri(cx - w * .5, sy, cx - w * .62, top + h, cx + w * .62, top + h, body);
-  const cw = Math.max(2, Math.round(w * .07));
-  for (let i = 0; i < h * .5; i++) for (let k = 0; k < cw; k++) G.set(Math.round(cx + w * .1 - i * .55) + k, Math.round(top + 1 + i), trim);
-  for (let i = 0; i < h * .2; i++) for (let k = 0; k < cw; k++) G.set(Math.round(cx - w * .14 + i * .6) + k, Math.round(top + 1 + i), trim);
-  G.tri(cx - w * .1, top, cx + w * .12, top, cx + w * .01, top + w * .16, PAL.su);
-  const by = Math.round(top + h * .5), bh = Math.max(2, Math.round(h * .05));
-  G.rect(Math.round(cx - w * .56), by, Math.round(w * 1.12), bh, shade(trim, -30));
-  G.rect(Math.round(cx - 1), by, 3, bh, PAL.bronze);
-  // folds below the sash
-  for (const fx of [-.3, .05, .32]) for (let y = by + bh + 2; y < top + h; y++) if (((y + fx * 10) | 0) % 5 !== 0) G.set(Math.round(cx + w * fx + (y - by) * fx * .12), y, shade(robe, -22));
-}
-// a sleeved arm ending in a paw; cuff trim near the paw
-function gArm(G, pts, r0, r1, robe, trim, paw, pawR) {
-  gPath(G, pts, r0, r1, robe);
-  const [a, b] = [pts[pts.length - 2], pts[pts.length - 1]], d = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
-  gCapsule(G, b[0] - (b[0] - a[0]) / d * 1.2, b[1] - (b[1] - a[1]) / d * 1.2, b[0], b[1], r1 * .95, r1 * .95, trim);
-  gCapsule(G, b[0], b[1], b[0], b[1], r1 * .7, r1 * .7, shade(robe, -28));   // the dark inside of the cuff
-  if (paw) { const px = b[0] + (b[0] - a[0]) / d * pawR * .8, py = b[1] + (b[1] - a[1]) / d * pawR * .8; G.ell(px, py, pawR, pawR * .9, paw); return [px, py]; }
-  return b;
-}
-function pawCol(L) { return L.allWhite || L.wz.length >= 2 ? WHITE : L.main; }
-// each figure returns a canvas; built once for the title screen and the cover
-function keyFigures() {
-  const out = {};
-  const mkFig = (w, h, fn, post) => { let meta; const cv = paint(w, h, G => { meta = fn(G); }); if (post) post(cv, meta); return cv; };
-  // 狸 head of house: turned to the left, one paw thrust forward, the other on the sword hilt, cloak flying
-  { const hero = C('coverhero'), L = catLook(hero), sd = hero.seed & 0xffff, robe = '#94562f', trim = '#d6a23e';
-    out.hero = mkFig(116, 124, G => {
-      G.tri(84, 52, 116, 124, 60, 124, '#5e3524'); G.tri(88, 50, 114, 84, 104, 124, '#7a4a30');     // cloak
-      gRobe(G, 62, 48, 60, 76, robe, trim);
-      gArm(G, [[86, 60], [94, 78], [88, 92]], 8, 9, robe, trim, pawCol(L), 5);                     // on the hilt
-      G.rect(80, 88, 34, 3, PAL.bronzeD); G.rect(80, 88, 34, 1, PAL.bronze); G.rect(80, 84, 3, 11, PAL.bronze);  // sword at the waist
-      const p = gArm(G, [[40, 60], [24, 57], [11, 49]], 8, 10, robe, trim, pawCol(L), 7);          // reaching out, wide sleeve
-      for (let i = -1; i <= 1; i++) G.rect(Math.round(p[0] - 6), Math.round(p[1] + i * 3), 3, 1, shade(pawCol(L), -40));
-      gHead(G, L, sd, 64, 32, 22, -.35, 'fierce', 'guan');
-    }, cv => gWhiskers(cv, 64, 32, 22, -.35, L)); }
-  // 赵姬: dancing, both arms up, long water-sleeves flying
-  { const c = C('zhaoji'), L = catLook(c), sd = c.seed & 0xffff, robe = '#7a1f24', trim = '#ecd79a';
-    out.zhaoji = mkFig(84, 96, G => {
-      gPath(G, bez([14, 22], [-4, 50], [10, 90], 12), 2, 5, trim);
-      gPath(G, bez([66, 14], [90, 30], [78, 4], 10), 2, 4, trim);
-      G.tri(28, 60, 54, 60, 70, 96, robe); G.tri(28, 60, 12, 96, 70, 96, robe);                   // skirt
-      for (let i = 0; i < 34; i++) G.set(Math.round(30 - i * .5 + i * .02), 62 + i, shade(robe, -25));
-      gRobe(G, 41, 34, 26, 30, robe, trim);
-      gArm(G, [[31, 44], [22, 32], [15, 20]], 4, 7, robe, trim, pawCol(L), 3.5);
-      gArm(G, [[51, 44], [60, 30], [66, 14]], 4, 7, robe, trim, pawCol(L), 3.5);
-      gHead(G, L, sd, 42, 23, 14, .3, 'soft', 'ji');
-    }, cv => gWhiskers(cv, 42, 23, 14, .3, L)); }
-  // 异人: the hostage, head bowed, paws folded into his sleeves
-  { const c = C('yiren'), L = catLook(c), sd = c.seed & 0xffff, robe = '#4a3d45', trim = '#8a6a5a';
-    out.yiren = mkFig(64, 84, G => {
-      gRobe(G, 32, 32, 38, 52, robe, trim);
-      gArm(G, [[16, 44], [22, 54], [30, 58]], 5, 8, robe, trim, null, 0);
-      gArm(G, [[48, 44], [42, 54], [34, 58]], 5, 8, robe, trim, null, 0);
-      G.ell(32, 59, 9, 5.5, trim); G.ell(32, 59, 7, 3.5, shade(robe, -24));
-      gHead(G, L, sd, 32, 22, 14, -.15, 'down', 'guan');
-    }, cv => gWhiskers(cv, 32, 22, 14, -.15, L)); }
-  // 平原君: raising a bamboo scroll
-  { const c = C('pingyuan'), L = catLook(c), sd = c.seed & 0xffff, robe = '#4f78a8', trim = '#27406b';
-    out.pingyuan = mkFig(70, 84, G => {
-      gRobe(G, 38, 32, 38, 52, robe, trim);
-      gArm(G, [[54, 44], [58, 60], [52, 70]], 5, 7, robe, trim, pawCol(L), 3.5);
-      const p = gArm(G, [[22, 44], [12, 36], [10, 26]], 5, 7, robe, trim, pawCol(L), 3.5);
-      for (let i = 0; i < 6; i++) G.rect(Math.round(p[0] - 9 + i * 3), Math.round(p[1] - 20), 2, 16, i & 1 ? '#d6b86a' : PAL.silk);
-      G.rect(Math.round(p[0] - 9), Math.round(p[1] - 16), 18, 1, PAL.he); G.rect(Math.round(p[0] - 9), Math.round(p[1] - 9), 18, 1, PAL.he);
-      gHead(G, L, sd, 38, 22, 14, -.4, 'calm', 'guan');
-    }, cv => gWhiskers(cv, 38, 22, 14, -.4, L)); }
-  // 吕不韦: a huge face in the clouds, eyes narrowed, stroking his whiskers
-  { const c = C('lv'), L = catLook(c), sd = c.seed & 0xffff, robe = '#5e3f86', trim = '#c29a52';
-    out.lv = mkFig(112, 108, G => {
-      gRobe(G, 50, 66, 96, 42, robe, trim);
-      gHead(G, L, sd, 50, 42, 32, .45, 'sly', 'guan');
-      gArm(G, [[82, 108], [82, 92], [76, 78]], 9, 8, robe, trim, pawCol(L), 7);
-    }, cv => gWhiskers(cv, 50, 42, 32, .45, L)); }
-  return out;
-}
-function fadeTo(cv, col, a) { const t = mk(cv.width, cv.height), x = t.getContext('2d'); x.drawImage(cv, 0, 0); x.globalCompositeOperation = 'source-atop'; x.globalAlpha = a; x.fillStyle = col; x.fillRect(0, 0, t.width, t.height); return t; }
-
-// the head of the 狸 house for the key art: a fixed tabby-and-white so it never changes (needs W = TW)
-function coverHero() {
-  return W.chars.coverhero || mkc({ id: 'coverhero', sur: '狸', name: '伯阳', born: bornAt(290), role: 'noble', robe: 'li', house: 'li', hist: true, immortal: true, loc: 'away',
-    g: { O: ['o'], B: ['B', 'B'], D: ['D', 'D'], A: ['A', 'A'], T: ['Tm', 'Tm'], Sp: ['sp', 'sp'], S: ['S', 's'], W: ['w', 'w'], C: ['C', 'C'], I: ['i', 'i'], L: ['L', 'L'], eye: [.1, .2] } });
-}
+let shareEl = null;
+// cover: the painted key art (art/cover.jpg) with the title over the open sky on the right
 function renderCover() {
-  const CW = 320, CH = 180, S = 6;
-  W = TW;
-  const c = paintKeyArt(CW, CH); g = c.getContext('2d'); g.imageSmoothingEnabled = false;
-  coverHero(); const Fg = keyFigures();
-  for (const [f, fx, fy, fade] of [[Fg.lv, -4, -12, .45], [Fg.yiren, 128, 4, 0], [Fg.pingyuan, 196, 96, .1], [Fg.zhaoji, 8, 80, 0], [Fg.hero, 74, 56, 0]]) {
-    g.globalAlpha = fade > .3 ? .85 : 1; g.drawImage(fade ? fadeTo(f, '#2e4654', fade) : f, fx, fy); g.globalAlpha = 1;
-  }
-  // warm rim light along the bottom so the front figure sits in the glow of the field
-  for (let y = CH - 14; y < CH; y++) { g.globalAlpha = (y - (CH - 14)) / 14 * .5; g.fillStyle = '#1e1216'; g.fillRect(0, y, CW, 1); }
-  g.globalAlpha = 1;
-  const big = mk(CW * S, CH * S), bx = big.getContext('2d'); bx.imageSmoothingEnabled = false; bx.drawImage(c, 0, 0, CW * S, CH * S);
-  bx.textAlign = 'center'; bx.lineJoin = 'round'; bx.strokeStyle = '#1b1622';
-  bx.font = '180px ' + FONT; bx.lineWidth = 28; bx.strokeText('一喵天下', 1500, 360); bx.fillStyle = '#ffe08a'; bx.fillText('一喵天下', 1500, 360);
-  bx.font = '60px ' + FONT; bx.lineWidth = 12; bx.strokeText('All Under Paw', 1500, 470); bx.fillStyle = '#f2ead4'; bx.fillText('All Under Paw', 1500, 470);
-  bx.font = '46px ' + FONT; bx.lineWidth = 10; bx.strokeText('押宝秦国质子 · 猫猫王朝模拟', 1500, 560); bx.fillText('押宝秦国质子 · 猫猫王朝模拟', 1500, 560);
-  document.body.innerHTML = ''; big.style.cssText = 'position:fixed;left:0;top:0;width:1920px;height:1080px'; document.body.appendChild(big);
-  document.title = 'COVER READY';
+  const img = new Image();
+  img.onload = () => {
+    const big = mk(1920, 1080), bx = big.getContext('2d');
+    bx.drawImage(img, 0, 0, 1920, 1080);
+    const gr = bx.createRadialGradient(1590, 300, 60, 1590, 300, 520); gr.addColorStop(0, 'rgba(10,20,28,.45)'); gr.addColorStop(1, 'rgba(10,20,28,0)');
+    bx.fillStyle = gr; bx.fillRect(1000, 0, 920, 900);
+    bx.textAlign = 'center'; bx.lineJoin = 'round'; bx.strokeStyle = '#1b1622';
+    bx.font = '150px ' + FONT; bx.lineWidth = 24; bx.strokeText('一喵天下', 1590, 250); bx.fillStyle = '#ffe08a'; bx.fillText('一喵天下', 1590, 250);
+    bx.font = '52px ' + FONT; bx.lineWidth = 11; bx.strokeText('All Under Paw', 1590, 340); bx.fillStyle = '#f2ead4'; bx.fillText('All Under Paw', 1590, 340);
+    bx.font = '40px ' + FONT; bx.lineWidth = 9; bx.strokeText('押宝秦国质子 · 猫猫王朝模拟', 1590, 420); bx.fillText('押宝秦国质子 · 猫猫王朝模拟', 1590, 420);
+    document.body.innerHTML = ''; big.style.cssText = 'position:fixed;left:0;top:0;width:1920px;height:1080px'; document.body.appendChild(big);
+    document.title = 'COVER READY';
+  };
+  img.src = 'art/cover.jpg';
 }
-
 // ============================================================ present: pixel layer + crisp text
 function present() {
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = false; ctx.globalAlpha = 1;
@@ -2483,7 +2284,6 @@ try { if (document.fonts && document.fonts.load) document.fonts.load('12px "ZCOO
 
 // ============================================================ boot
 icons();
-newGame(); TW = W; W = null;
 /*TEST_HOOK*/
 if (location.hash === '#cover') { (document.fonts ? document.fonts.ready : Promise.resolve()).then(renderCover); window.__gameBooted = true; return; }
 let last = performance.now(), frameErr = 0;
