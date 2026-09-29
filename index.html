@@ -1819,7 +1819,7 @@ EV.pregnant = e => {
   const p = P(), f = C(m.preg.f), mine = m.preg.f === W.player;
   if (m.id === W.player) return { title: '有孕', who: [m.id].concat(f ? [f.id] : []),
     text: `你有了身孕，约莫三季后临盆。${f && m.sp !== f.id ? '孩子的父亲是' + nm(f) + '。这件事，只有你们两个知道。' : ''}`,
-    opts: [opt('好好养着', '', () => {}), opt('少出门走动', '心烦-1', () => { p.stress = Math.max(0, p.stress - 1); })] };
+    opts: [opt('好好养着', '', () => {}), opt('少出门走动', '心烦-10', () => addStress(p, -10, '静养'))] };
   if (m.sp === W.player) return { title: '有孕', who: [m.id],
     text: mine ? `${who(m)}告诉你，${ta(m)}有了身孕。` : `${who(m)}告诉你，${ta(m)}有了身孕。你算了算日子，这阵子你并不常在家。`,
     opts: [opt('「好。」', ta(m) + '好感+10', () => addOp(m, p, 10)), opt('推掉外面的事，多陪陪' + ta(m), ta(m) + '好感+20 · 下季精力-1', () => { addOp(m, p, 20); W.flags.skipAp = true; })] };
@@ -1975,7 +1975,7 @@ const RANDOM = [
     return { title: l.female ? '表妹' : '表哥', who: [s.id], text: `${who(s)}这阵子常说去市集，回来时身上没有鱼腥味，倒沾着别家的毛。`,
       opts: [opt('跟去看看', chkHint(3, 9), () => { if (chk(3, 9)) see(); else toast('跟丢了', '#dddddd'); }), opt('算了', '', () => {}), opt('派人盯着' + ta(s), '得知秘密', see, null, '多疑')] }; } },
   { id: 'catnip', w: 2, cd: 24, b: () => ({ title: '薄荷草', who: [], text: '西边来的商队带了一种叫薄荷草的东西，说家里人闻了会高兴。',
-    opts: [opt('买一捆回家', '鱼干-30 · 家人好感+6 · 心烦清零', () => { addFish(-30); for (const c of household()) addOp(c, P(), 6, true); P().stress = 0; }, () => W.fish >= 30), opt('不买', '', () => {})] }) },
+    opts: [opt('买一捆回家', '鱼干-30 · 家人好感+6 · 心烦-30', () => { addFish(-30); useBohe(); }, () => W.fish >= 30), opt('不买', '', () => {})] }) },
   { id: 'yirenpoor', w: 3, ok: () => alive(C('yiren')) && C('yiren').loc === 'hostage' && W.flags.metYiren && !W.flags.zichu && !W.flags.escapeLead, b: () => ({ title: '断粮', who: ['yiren'], text: '异人派人来说，秦国的月钱又没到，府里已经三天没见荤腥了。',
     opts: [opt('送去一篓鱼干', '鱼干-50 · 好感+15', () => { addFish(-50); addOp(C('yiren'), P(), 15); }, () => W.fish >= 50), opt('「我手头也紧。」', '好感-5', () => addOp(C('yiren'), P(), -5))] }) },
   { id: 'yirenhome', w: 2, ok: () => alive(C('yiren')) && C('yiren').loc === 'hostage' && W.flags.metYiren && !W.flags.escapeLead, b: () => {
@@ -2096,12 +2096,12 @@ function openFocus() {
 // ---------------------------------------------------------- 修行: practice turns into stats
 // which stat an action trains (kinds from didAct; other systems' kinds included where the spec names them)
 const XP_KIND = { trade: 1, caravan: 1, advise: 1, counsel: 1, policy: 1,
-  talk: 2, gift: 2, pay: 2, court: 2, propose: 2, match: 2, feast: 2, banquet: 2,
-  spy: 3, ask: 3, venture: 3, blackmail: 3, expose: 3, scheme: 3, plot: 3, sway: 3, seduce: 3, fabricate: 3, alienate: 3, murder: 3,
+  talk: 2, gift: 2, pay: 2, court: 2, propose: 2, match: 2, feast: 2, banquet: 2, chuyu: 2,
+  spy: 3, ask: 3, venture: 3, blackmail: 3, expose: 3, scheme: 3, plot: 3, sway: 3, seduce: 3, fabricate: 3, alienate: 3, murder: 3, extort: 3,
   duel: 0, guard: 0, escort: 0, army: 0, campaign: 0, battle: 0 };
 // +1 per use, +1 more on success — for the ones that can fail; these never do, so they give +1 (keeps the 立嗣 race and
 // the economy where the balance harness put them)
-const XP_SURE = new Set(['trade', 'caravan', 'talk', 'gift', 'pay', 'feast', 'banquet', 'expose']);
+const XP_SURE = new Set(['trade', 'caravan', 'talk', 'gift', 'pay', 'feast', 'banquet', 'expose', 'extort']);
 let GFX = null;   // { i, t0 }: the star over a stat that just went up (not saved)
 function gainXp(c, i, n) {
   if (!c || !(i >= 0 && i <= 3) || !n) return;
@@ -5755,10 +5755,11 @@ function drawCity() {
     g.drawImage(ICON.ap, 15, 93 + Math.sin(T * 3) * 1.2);
     // top-right widget (118,19,59,≈45): Act 1's race first, then whichever system has something to show;
     // under it (from y 64, or 19 with no widget) the systems' rows (SYS.rows), and the notices below those
-    const drewW = raceWidget() || SYS.widget.some(f => f());
-    let wy = drewW ? 64 : 19;
+    const drewW = raceWidget() || SYS.widget.some(f => f()), wy0 = drewW ? 64 : 19;
+    let wy = wy0;
     for (const f of SYS.rows) wy += f(wy) || 0;
-    TANCH = [Math.max(64, wy + 2), 1];
+    // with rows on the right (an errand, schemes) the notices keep left of them instead of sliding down onto the card
+    TANCH = wy > wy0 ? [66, 1, 58, 112] : [Math.max(64, wy + 2), 1];
     // player card. Slots the systems draw into (SYS.card, after this): merit bar y152–153 x42–136,
     // xp bars y166–167 (20 px under each stat), button slot B (140,151,36,14)
     rect(0, 129, W_, 191, '#2a2030'); rect(0, 129, W_, 1, OUT);
@@ -5895,11 +5896,13 @@ function drawTitle() {
 }
 let resetT = -9;
 function drawToasts() {
-  const [y0, dir] = TANCH;
+  // TANCH[2..3]: a narrower band (centre x, width); a notice too long for it uses the full width
+  const [y0, dir, bx, bw] = TANCH;
   TOASTS.forEach((t, i) => {
-    const a = Math.min(1, t.life * 2), sz = fitSize(t.s, 168, 7), w = Math.min(176, tw(t.s, sz) + 10), y = dir > 0 ? y0 + i * 12 : y0 - 11 - i * 12;
-    g.globalAlpha = a * .8; rect(R(90 - w / 2), y, R(w), 11, '#16121a'); g.globalAlpha = 1;
-    txt(t.s, 90, y + 5.5, sz, t.col, 'center', null, a);
+    const nar = bw && tw(t.s, 5.5) + 10 <= bw, cx = nar ? bx : 90, mw = nar ? bw : 176;
+    const a = Math.min(1, t.life * 2), sz = fitSize(t.s, mw - 8, 7), w = Math.min(mw, tw(t.s, sz) + 10), y = dir > 0 ? y0 + i * 12 : y0 - 11 - i * 12;
+    g.globalAlpha = a * .8; rect(R(cx - w / 2), y, R(w), 11, '#16121a'); g.globalAlpha = 1;
+    txt(t.s, cx, y + 5.5, sz, t.col, 'center', null, a);
   });
 }
 
