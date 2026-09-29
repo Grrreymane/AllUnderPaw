@@ -497,6 +497,8 @@ const runSys = (k, ...a) => { for (const f of SYS[k]) f(...a); };
 function didAct(kind, target, st, ok) { runSys('did', kind, target || null, st === undefined ? -1 : st, ok !== false); }
 const SEASON = ['春', '夏', '秋', '冬'];
 const yearOf = t => 262 - Math.floor(t / 4);
+// (free mode never ends: after 前1年 comes 公元1年, there was no year 0)
+const yearTxt = t => { const y = yearOf(t); return y > 0 ? '前' + y + '年' : '公元' + (1 - y) + '年'; };
 const bornAt = yearBC => (262 - yearBC) * 4;
 const ageOf = c => Math.floor(((c.dead !== null ? c.dead : W.t) - c.born) / 4);
 const C = id => W.chars[id];
@@ -820,7 +822,9 @@ function chk(i, dc) { return Math.random() < pct(stat(P(), i), dc); }
 const chkHint = (i, dc) => STATN[i] + ' ' + R(pct(stat(P(), i), dc) * 100) + '%';
 function addHealth(c, n) { if (c) c.health = clamp((c.health || 0) + n, 0, 100); }
 // news worth remembering goes to the 近况 log (last 40 lines) and shows as a notice (quiet: log only)
-function logLine(s, col, quiet) { W.log = W.log || []; W.log.push(col ? { t: W.t, s, col } : { t: W.t, s }); if (W.log.length > 40) W.log.splice(0, W.log.length - 40); if (!quiet) toast(s, col || '#f2ead4'); }
+// (CATCHUP: an old save is catching up on history's overdue deaths, histCatchUp: nothing is said line by line)
+let CATCHUP = false;
+function logLine(s, col, quiet) { if (CATCHUP) return; W.log = W.log || []; W.log.push(col ? { t: W.t, s, col } : { t: W.t, s }); if (W.log.length > 40) W.log.splice(0, W.log.length - 40); if (!quiet) toast(s, col || '#f2ead4'); }
 // energy a head of house gets each season (a head under 16 is ruled by a regent: 1 until twelve, then at most 2; see growth's 家法)
 const apMax = p => {
   if (!p) return 2;
@@ -963,7 +967,8 @@ function endSeason() {
   // a dead head's traits and troubles don't pass to the heir (the succession card sets the new head's energy)
   if (live) {
     W.ap = apMax(p);
-    if (W.flags.skipAp) { W.ap = Math.max(1, W.ap - 1); W.flags.skipAp = false; }
+    // (a head with one point of energy pays it too: '下季精力-1' is never free)
+    if (W.flags.skipAp) { W.ap = Math.max(0, W.ap - 1); W.flags.skipAp = false; }
     // 心烦 at 100 (growth's season hook doesn't let it fade on the edge): the breakdown card
     if (stressLv(p) >= 3 && !W.queue.some(q => q.ev === 'breakdown')) W.queue.push({ ev: 'breakdown' });
   }
@@ -1136,6 +1141,18 @@ function spawnHist(o) {
   for (const pid of [c.dad, c.mom]) { const pa = C(pid); if (pa && !pa.kids.includes(c.id)) pa.kids.push(c.id); }
   return c;
 }
+// 秦 is gone: no king, and its offices, fiefs and 郎官 go with it. A state, not a date (W.a3.qinFell): a king off
+// history's line after 前206 still gets an heir (kingCheck), and 秦 falls only when a line runs out.
+function qinFall(s) {
+  W.kingId = null; if (W.a3) W.a3.qinFell = true; logLine(s, '#c8e0ff');
+  if (W.a2) W.a2.fief = false;
+  if (W.rank >= 1 && W.rank <= 4) { W.rank = 0; W.patron = null; if (W.a2) W.a2.xiang = W.a2.zhongfu = null; PORT.clear(); MINI.clear(); logLine('秦亡了。狸家的官，也跟着没了', '#ff9a8a'); }
+  for (const c of family()) if (c.flags.path === 'lang') {
+    delete c.flags.path; if (c.id !== W.player) { c.loc = c.flags.left || c.flags.branch ? localLoc('tavern') : 'home'; c.role = 'merchant'; }
+    if (W.a2 && W.a2.gone) W.a2.gone[c.id] = 1;
+  }
+  if (typeof CS !== 'undefined') CS.k = '';
+}
 // The 秦 kings: W.kingId follows the crown (see king() in ACT2). Their deaths are quiet (HIST_GONE): in 咸阳 act two's
 // cards tell them (the log line stays quiet then); 政 and his mother come home in 前251 (ACT2's 归秦).
 const HIST_NEXT = {
@@ -1170,11 +1187,7 @@ const HIST_NEXT = {
     spawnHist({ id: 'ziying', disp: '子婴', sur: '嬴', name: '婴', born: bornAt(240), role: 'ruler', robe: 'qin', state: '秦', loc: 'xpalace', tr: ['多疑', '节制'], st: [4, 7, 6, 9] });
     W.kingId = 'ziying'; logLine('赵高逼死了秦二世，立子婴为秦王。', '#c8e0ff');
   },
-  ziying: () => {
-    W.kingId = null; logLine('项羽进了咸阳，杀了子婴，烧了秦宫。', '#c8e0ff');
-    // 秦's offices and fiefs go with 秦
-    if (W.rank >= 1 && W.rank <= 4) { W.rank = 0; W.patron = null; if (W.a2) { W.a2.fief = false; W.a2.xiang = W.a2.zhongfu = null; } PORT.clear(); MINI.clear(); logLine('秦亡了。狸家的官，也跟着没了', '#ff9a8a'); }
-  },
+  ziying: () => qinFall('项羽进了咸阳，杀了子婴，烧了秦宫。'),
   zhaowang: () => {
     spawnHist({ id: 'daoxiang', disp: '赵悼襄王', sur: '赵', name: '偃', born: bornAt(266), dad: 'zhaowang', role: 'ruler', robe: 'zhaoKing', loc: 'palace', tr: ['轻信', '多情'], st: [5, 6, 7, 5] });
     spawnHist({ id: 'guokai', disp: '郭开', sur: '郭', name: '开', born: bornAt(282), role: 'minister', robe: 'zhao', loc: 'palace', tr: ['贪吃', '狡诈', '嫉妒'], st: [3, 8, 10, 14], g: { O: ['O'], size: [2, 2] } });
@@ -1584,10 +1597,11 @@ EV.prologue = () => {
   const ans = k => said.get(k);
   return { title: '三问', who: [pa.id, a.id, b.id, d.id], big: true,
     text: `狸家的家主${nm(pa)}病了一冬。今天他把三个孩子叫到榻前，靠着枕头问：「种田，能得几倍的利？」「十倍。」「贩珠玉呢？」「百倍。」「那立一国之君呢？」\n谁来接这个家？`,
-    opts: [a, b, d].map(k => opt(nm(k) + '：' + ans(k), traitsOf(k).slice(0, 3).join(' ') + ' · ' + STATN.map((s, i) => s + stat(k, i)).join(' '), () => {
+    // (passing over the eldest costs: they hold a grudge, and it can drive them out of the house)
+    opts: [a, b, d].map(k => opt(nm(k) + '：' + ans(k), traitsOf(k).slice(0, 3).join(' ') + ' · ' + STATN.map((s, i) => s + stat(k, i)).join(' ') + (k !== a ? ' · ' + (a.female ? '长姊' : '长兄') + '不服' : ''), () => {
       W.player = k.id; PORT.clear();
       W.flags.elder = pa.id; W.ap = apMax(k);
-      if (k !== a) { passOver(a, 40); W.news.push('你的' + relTo(a) + nm(a) + '一句话也没说。'); }
+      if (k !== a) { passOver(a, 40); W.news.push('你的' + relTo(a) + nm(a) + '一句话也没说。', '等' + ta(a) + '对你好感过 40，这口气才会慢慢消。'); }
       W.queue.push({ ev: 'qihuo' });
     })) };
 };
@@ -1717,9 +1731,10 @@ EV.siege = () => {
   const hoard = !!W.flags.hoard;
   const O = hoard ? [opt('留着自家吃', '围城时家用 0', () => {}),
     opt('把存粮加价卖出去', withTip('鱼干+150 · 名望-8', '仁厚'), () => { addFish(150); addPrest(-8); W.flags.hoard = W.flags.stock = false; addStress(P(), '仁厚'); })]
-    : [opt('多囤些粮', '鱼干-50 · 围城时家用 0', () => { addFish(-50); W.flags.stock = true; }, () => W.fish >= 50), opt('省着吃', '', () => {})];
+    : [opt('多囤些粮', '鱼干-50 · 围城时家用 0' + (W.fish - 50 < 300 ? ' · 出城的金子更难凑' : ''), () => { addFish(-50); W.flags.stock = true; }, () => W.fish >= 50), opt('省着吃', '', () => {})];
   return { title: '围城', who: ['zhaowang'],
-    text: '秦军兵临邯郸。城门关了，粮价一天一变。赵王在朝上说，城破之前，先杀秦国的质子。' + (hoard ? '\n上党那年囤的粮还在你家的仓里。' : ''),
+    text: '秦军兵临邯郸。城门关了，粮价一天一变。赵王在朝上说，城破之前，先杀秦国的质子。' + (hoard ? '\n上党那年囤的粮还在你家的仓里。' : '') +
+      '\n真到那一天，要送' + nm(C('yiren')) + '出城，得有三百鱼干打点城门。谁出这笔钱，功劳算谁的。',
     opts: O, pre: () => { W.flags.siege = true; if (W.flags.hoard) W.flags.stock = true; } };
 };
 EV.maosui = () => ({ title: '毛遂', who: ['maosui', 'pingyuan'],
@@ -1741,21 +1756,24 @@ EV.dimian = () => {
   post: () => { if (alive(xy)) xy.loc = 'daliang'; } };
 };
 EV.qiefu = () => ({ title: '虎符', who: ['xinling'],
-  text: '深夜，信陵君的门客敲开你家后门。魏王的宠姬如姬答应替信陵君偷出兵符，宫外需要一支商队把东西送出城。事成，魏军就能来救邯郸。',
+  text: '深夜，信陵君的门客敲开你家后门。魏王的宠姬如姬答应替信陵君偷出兵符，宫外需要一支商队把东西送出城。事成，魏军就能来救邯郸。' +
+    // (the season before the escape: say what the 50 does to the 300)
+    (!W.flags.escapeLead && W.fish >= 50 && W.fish - 50 < 300 ? '\n出了这五十，送' + nm(C('yiren')) + '出城的三百就不够了。' : ''),
   opts: [opt('「我的车队明早出城。」', '鱼干-50 · 名望+15 · 功+10 · 信陵君好感+30', () => { addFish(-50); addPrest(15); addOp(C('xinling'), P(), 30); addMerit(10, '虎符');
       laterItem('zhaojian', 2, '信陵君派人送来的谢礼'); if (typeof offerFriend === 'function') offerFriend(C('xinling'), true); }, () => W.fish >= 50),
     opt('收下定金，然后称病', '鱼干+40 · 名望-10', () => { addFish(40); addPrest(-10); }, null, '狡诈'),
     opt('「这件事我掺和不起。」', '', () => {})] });
+const escOdds = () => clamp((W.fish - 150) / 150 + .03 * stat(P(), 3), .05, .95);
 EV.escape = () => {
   const yr = C('yiren'), lv = C('lv'), p = P(); if (!alive(yr)) return null;
-  // short of the 300? the closer you are, the likelier you can scrape the rest together
-  const rich = W.fish >= 300, dc = 12 - Math.floor(W.fish / 60);
+  // short of the 300? the closer you are, the likelier you can scrape the rest together (150 hardly ever, 290 nearly always)
+  const rich = W.fish >= 300, odds = escOdds();
   // 异人 remembers who paid for the gate
   const lvPays = () => { W.flags.escapeLead = 'lv'; W.credit.lv += RACE.lvEsc; addMemo(yr, lv, '出城之恩', 20); };
   return { title: '出城', who: ['yiren', 'lv'],
     text: '赵王下令，明日处死秦国质子。异人夜里来找你，抓着你的袖子说不出话。吕不韦的人随后也到了：守城的官吏只认金子，六百斤。吕不韦备好了，问你出不出。',
-    opts: [opt('「钱我来出。」', rich ? '鱼干-300 · 立嗣+' + RACE.esc + ' · 功+20 · 异人好感+25' : '鱼干不够 · ' + chkHint(3, dc) + ' 凑齐 · 立嗣+' + RACE.esc + ' · 功+20', () => {
-        if (W.fish >= 300 || chk(3, dc)) { addFish(-Math.min(300, W.fish)); W.credit.you += RACE.esc; addMerit(20, '出城'); addOp(yr, p, 25); addMemo(yr, p, '出城之恩', 20); W.flags.escapeLead = 'you'; }
+    opts: [opt('「钱我来出。」', rich ? '鱼干-300 · 立嗣+' + RACE.esc + ' · 功+20 · 异人好感+25' : '鱼干不够 · 谋 ' + R(odds * 100) + '% 凑齐 · 立嗣+' + RACE.esc + ' · 功+20', () => {
+        if (W.fish >= 300 || chance(odds)) { addFish(-Math.min(300, W.fish)); W.credit.you += RACE.esc; addMerit(20, '出城'); addOp(yr, p, 25); addMemo(yr, p, '出城之恩', 20); W.flags.escapeLead = 'you'; }
         else { toast('钱没凑够，城门是吕不韦的金子打开的', '#ff9a8a'); lvPays(); } }),
       opt('「吕公出吧。我跟着走。」', '功劳归吕不韦 · 异人好感+5', () => { lvPays(); addOp(yr, p, 5); }),
       opt('把异人的去向告诉赵王', '赵王好感+40 · 从此与秦为敌', () => { W.flags.betray = true; addOp(yr, p, -80); rel(yr, p).tag = 'rival'; addMemo(yr, p, '告密', -60); addOp(C('zhaowang'), p, 40); addPrest(10); W.flags.escapeLead = 'lv'; addMemo(yr, lv, '出城之恩', 20); })],
@@ -2658,8 +2676,12 @@ SYS.acts.push((c, A) => {
       fn: () => { W.heirId = c.id; addMemo(c, p, '立为嗣', 20); logLine('你立' + nm(c) + '为嗣', '#ffe08a'); SFX.happy(); didAct('nameHeir', c, -1, true); } }));
     // (a child set aside remembers it, but doesn't yet plot or walk out over it)
     const grown = ageOf(c) >= 16;
+    // (only when someone else would then inherit: with nobody else left the same cat stays heir, and each press would cost again)
+    const nextIfOut = () => { const was = c.flags.disinh; c.flags.disinh = true; const nh = heirNow(); if (was) c.flags.disinh = was; else delete c.flags.disinh; return nh; };
     if (c === h) A.push(mkAct({ id: 'disinherit', kind: 'disinherit', n: '废嗣', ap: 0, grp: '家', hint: '换下一个人继承', danger: grown ? '名望-30 · 结仇' : '名望-30 · ' + ta(c) + '会记得',
+      no: () => { const nh = nextIfOut(); return !nh || nh === c ? '没有别人可以继承' : ''; },
       fn: () => {
+        const nh0 = nextIfOut(); if (!nh0 || nh0 === c) return;
         c.flags.disinh = true; if (W.heirId === c.id) W.heirId = null;
         addPrest(-30); addMemo(c, p, '废嗣', grown ? -30 : -15);
         if (grown) { passOver(c, clamp((c.disc || 0) + 50, 0, 100)); if (typeof makeRival === 'function') makeRival(c, p); else rel(c, p).tag = 'rival'; }
@@ -2767,7 +2789,7 @@ function friendTarget(gv) {
 }
 // a 士 in town to argue with (論辩)
 const shiHere = () => Object.values(W.chars).some(c => inCity(c) && c.role === 'shi' && c.loc !== 'home' && ageOf(c) >= 16 && !W.ret.includes(c.id));
-const whenT = t => '前' + yearOf(t) + '年' + SEASON[t % 4];
+const whenT = t => yearTxt(t) + SEASON[t % 4];
 // a gold button to hand fish over for an errand
 const payAct = (c, n, t) => mkAct({ id: 'job_pay', kind: 'jobpay', n: '送去 ' + n + ' 鱼干', ap: 0, fish: n, gold: true, hint: '差事 · ' + t,
   no: () => W.fish < n ? '鱼干不够 ' + n : '', fn: () => { if (W.fish < n) return; addFish(-n); if (reach(c)) react(c, 'gift', true); didAct('jobpay', c, -1, true); } });
@@ -2880,13 +2902,20 @@ const missOp = () => W.flags.act1Done ? 5 : 2;
 const missTxt = gv => '误了：功-3 · ' + (gv ? nm(gv) : '') + '好感-' + missOp();
 // Season start: a new errand when you hold a rank and have none (a season's rest after the last). Not in a season the
 // story already fills (act one's calendar, the night of the escape), and less often once there is no higher rank here.
-function offerJob() {
-  if (W.job || W.cool.job || W.rank < 1 || W.flags.waiting || W.queue.some(q => q.ev === 'joboffer')) return;
-  if (W.act === 1 && (HIST.some(h => h[0] === W.t) || (W.flags.escapeLead && !W.flags.act1Done))) return;
-  if (!chance(nextNeed() === null ? .35 : .55)) return;
+// who hands out errands: your patron, and 平原君 when he likes you
+function jobGivers() {
   const gv = [], pa = patron(), py = C('pingyuan'), p = P();
   if (pa && pa !== p && opinion(pa, p) >= 0) gv.push(pa);
   if (inCity(py) && py !== pa && opinion(py, p) >= 20) gv.push(py);
+  return gv;
+}
+const jobStoryBusy = () => W.act === 1 && (HIST.some(h => h[0] === W.t) || (W.flags.escapeLead && !W.flags.act1Done));
+// force: you asked for one (讨差事): no roll. Returns whether an offer was queued.
+function offerJob(force) {
+  if (W.job || W.cool.job || W.rank < 1 || W.flags.waiting || W.queue.some(q => q.ev === 'joboffer')) return false;
+  if (jobStoryBusy()) return false;
+  if (!force && !chance(nextNeed() === null ? .35 : .55)) return false;
+  const gv = jobGivers();
   const done = W.jobDone || {}, opts = [];
   for (const d of JOBS) for (const g of gv) {
     if ((d.patron !== '*' && d.patron !== g.id) || (!d.letter && !inCity(g))) continue;
@@ -2895,14 +2924,22 @@ function offerJob() {
     if (d.ok && !d.ok(g)) continue;
     opts.push([d, g]);
   }
-  if (!opts.length) return;
+  if (!opts.length) return false;
   // the patron's own errands come first; the everyday ones by weight
   const own = opts.filter(o => o[0].patron !== '*'), L = own.length && chance(.75) ? own : opts;
   let x = Math.random() * L.reduce((t, o) => t + (o[0].w || 1), 0), [d, g] = L[0];
   for (const o of L) { x -= o[0].w || 1; if (x <= 0) { [d, g] = o; break; } }
   const q = { ev: 'joboffer', id: d.id, from: g.id };
-  if (d.pre) { d.pre(q, g); if (!q.tgt) return; }
-  W.queue.push(q);
+  if (d.pre) { d.pre(q, g); if (!q.tgt) return false; }
+  W.queue.push(q); return true;
+}
+// 讨差事 on the 宫 tab: errands are where most 功 comes from, so you need not wait for one to be handed down
+function askJobAct() {
+  return mkAct({ id: 'askJob', kind: 'askJob', n: '讨差事', ap: 0, gold: !W.job && !W.cool.job && nextNeed() !== null && (W.merit || 0) < nextNeed() && jobGivers().length > 0,
+    hint: (jobGivers()[0] ? '向' + nm(jobGivers()[0]) + '讨 · ' : '') + '办成记功',
+    no: () => W.job ? '手上有差事了' : W.cool.job ? '刚办完一件，再等 ' + W.cool.job + ' 季' : W.queue.some(q => q.ev === 'joboffer') ? '差事已经派下来了'
+      : !jobGivers().length ? '没有主公，没人派差事' : jobStoryBusy() ? '这季顾不上' : '',
+    fn: () => { if (!offerJob(true)) toast('眼下没有合适的差事', '#dddddd'); else didAct('askJob', jobGivers()[0] || null, -1, true); } });
 }
 EV.joboffer = e => {
   const d = e && jobDef(e.id), gv = e && C(e.from);
@@ -2971,13 +3008,17 @@ function jobDid(kind, t, ok) {
   j.n = (j.n || 0) + 1;
   if (j.n >= (d.goal.n || 1)) endJob(true); else toast('差事 ' + j.n + '/' + d.goal.n, '#ffe08a');
 }
+// where the errand is done: the sheet of the one it is about (when in reach), else its tab
+function jobGoWho(j) { const w = jobWho(j), c = w && w.map(C).find(x => alive(x) && x.id !== W.player && reach(x)); return c || null; }
+const jobGoTxt = (j, d) => { const c = jobGoWho(j); return c ? '去找' + nm(c) : TABS[d.tab] ? '去「' + TABS[d.tab].n + '」' : ''; };
+function jobGo(j, d) { const c = jobGoWho(j); if (c) openSheet(c.id); else if (TABS[d.tab]) W.loc = d.tab; }
 // the errand's card (tap its row under the top-right widget)
 function jobCard() {
   const j = W.job, d = j && jobDef(j.id); if (!d) return;
   const gv = C(j.from), pg = jobProg(j);
   showCard({ title: '差事 · ' + d.title, who: alive(gv) ? [gv.id] : [],
     text: jobLine(d, j) + '\n要办：' + jobG(j) + (pg ? ' ' + pg : '') + '\n期限：' + (d.dueT ? '出城那夜' : '还剩 ' + jobLeft(j) + ' 季') + '\n办妥：' + rewTxt(d),
-    opts: [opt('「这就去办。」', '', () => {}), opt('「这件事我办不了。」', '功-3 · ' + nm(gv) + '好感-' + missOp(), () => endJob(false))] });
+    opts: [opt('「这就去办。」', jobGoTxt(j, d), () => jobGo(j, d)), opt('「这件事我办不了。」', '功-3 · ' + nm(gv) + '好感-' + missOp(), () => endJob(false))] });
 }
 // the button an errand points at glows gold (run after every other system has replaced its actions)
 function jobGoldActs(c, A) {
@@ -3015,7 +3056,8 @@ const promoReady = () => { const x = nextPromo(); return !!x && x.need().every((
 const promoTxt = () => {
   const x = nextPromo();
   if (!x) return W.rank < 1 ? '先做上舍人' : W.rank === 1 && !W.flags.act1Done ? '第一幕之后，由平原君举荐' : '眼下没有更高的位置';
-  return x.need().map(([l, v, n]) => l + ' ' + Math.min(v, n) + '/' + n).join(' · ');
+  // (what is missing first: a list row cuts the tail off)
+  const L = x.need(); return L.filter(([, v, n]) => v < n).concat(L.filter(([, v, n]) => v >= n)).map(([l, v, n]) => l + ' ' + Math.min(v, n) + '/' + n).join(' · ');
 };
 function promote(n, by) {
   if (W.rank >= n) return;
@@ -3301,7 +3343,7 @@ function openCareer() {
     { t: '功 ' + (W.merit || 0) + (need ? ' / ' + need : ''), s: need ? '差事、献策、出力都记功' : W.rank ? '功每满 ' + MERIT_GIFT + '，主公有赏' : '' },
     { t: '名望 ' + W.prest + ' · ' + pt.n, s: '众人好感+' + pt.op + ' · 提亲+' + tierWed(pt) + '%' + (pt.next ? ' · ' + pt.next + ' 升一档' : '') },
     pa ? { por: pa, t: '主公 ' + nm(pa), s: '对你 ' + opinion(pa, P()), fn: () => openSheet(pa.id, true) } : { t: '主公：无', s: (W.rank ? '权贵好感到 ' + LORD_OP + '，会收你在门下' + (bestLord() ? ' · 最近的：' + nm(bestLord()[0]) + ' ' + bestLord()[1] + '/' + LORD_OP : '') : doorTxt()) },
-    d ? { icon: icoJob(), t: '差事 · ' + d.title, s: jobG(j) + ' · ' + jobWhen(j), fn: jobCard, close: true } : { icon: icoJob(), t: '差事：无', s: !W.rank ? '当上舍人才有差事' : pa ? '主公会派差事给你' : '有了主公才有差事' },
+    d ? { icon: icoJob(), t: '差事 · ' + d.title, s: jobG(j) + ' · ' + jobWhen(j), fn: jobCard, close: true } : { icon: icoJob(), t: '差事：无', s: !W.rank ? '当上舍人才有差事' : jobGivers().length ? '主公会派差事 · 也可去宫里讨' : '有了主公才有差事' },
     { icon: icoDec('office'), t: '求官', s: promoTxt(), fn: openDecisions },
     { icon: icoEst('shop'), t: '产业', right: '+' + estateIncome() + '/季', col: '#276a32', fn: openEstates },
     { icon: icoItem(W.items[0] || 'bi'), t: '名物', right: W.items.length + ' 件', fn: openTreasures },
@@ -3433,6 +3475,7 @@ SYS.tab.push((tab, A) => {
   }
   if (tab === 'court') {
     A.push(adviseAct());
+    if (W.rank >= 1 && W.kingId !== W.player) A.push(askJobAct());
     const ready = promoReady(), wait = W.cool.promo;
     A.push(mkAct({ id: 'decide', n: '大计', ap: 0, open: true, gold: ready && !wait, hint: ready ? (wait ? '求官 · 再等 ' + wait + ' 季' : '求官的条件齐了') : W.kingId && W.kingId === W.player ? '大宴 · 家谱 · 家训' : '求官 · 大宴 · 家谱 · 家训', fn: openDecisions }));
   }
@@ -3452,7 +3495,8 @@ SYS.goal.push(() => {
   const j = W.job, d = j && jobDef(j.id);
   // (after act one an errand about to run out goes before everything: missing it costs; in act one the story comes
   // first, and a missed errand costs less there, see endJob)
-  if (d) { const pg = jobProg(j); return { s: '差事：' + jobG(j) + (pg ? ' ' + pg : '') + ' · ' + jobWhen(j) + '（' + TABS[d.tab].n + '）', pri: W.flags.act1Done && !d.dueT && jobLeft(j) <= 1 ? 9 : 20 }; }
+  // (in act one only its last season: the story's line keeps the goal until then)
+  if (d) { const pg = jobProg(j); return { s: '差事：' + jobG(j) + (pg ? ' ' + pg : '') + ' · ' + jobWhen(j) + '（' + TABS[d.tab].n + '）', pri: !d.dueT && jobLeft(j) <= 1 ? 9 : 20 }; }
   if (promoReady() && !W.cool.promo) return { s: '目标：求官，升' + RANKS[nextPromo().to] + '（宫 · 大计）', pri: 25 };
   // money lying idle: land and shares pay every season (until you have looked at the 置产 list once)
   if (W.flags.act1Done && !W.flags.estSeen && W.fish >= 250 && estKinds().length < estMax() && Object.keys(ESTATES).some(k => !W.estates[k] && !estNo(k))) return { s: '目标：置产，每季分红（市）', pri: 88 };
@@ -3465,8 +3509,10 @@ const icoJob = () => ICON.job || (ICON.job = rows(['WWWWWWW', 'WLWWWLW', 'WWLWLW
 SYS.rows.push((y, lim) => {
   const j = W.job, d = j && jobDef(j.id); if (!d || (lim && y + ROW_H - 1 > lim)) return 0;
   rect(118, y, 59, ROW_H - 1, 'rgba(22,18,26,.8)'); img(icoJob(), 119, y + 2);
-  const late = !d.dueT && jobLeft(j) <= 1, pg = jobProg(j);
-  txt(fitT(d.title + ' ' + (pg ? pg + ' ' : '') + jobWhen(j), 47, 5.5), 129, y + 6, 5.5, late ? '#ff9a8a' : '#ffe08a', 'left', null);
+  const late = !d.dueT && jobLeft(j) <= 1, pg = jobProg(j), tb = TABS[d.tab] ? TABS[d.tab].n : '';
+  // (the tab it is done in, at the right edge)
+  txt(fitT(d.title + ' ' + (pg ? pg + ' ' : '') + jobWhen(j), tb ? 39 : 47, 5.5), 129, y + 6, 5.5, late ? '#ff9a8a' : '#ffe08a', 'left', null);
+  if (tb) txt(tb, 175, y + 6, 5.5, '#a8c8ff', 'right', null);
   hit(118, y, 59, ROW_H + 1, jobCard);
   return ROW_H;
 });
@@ -4027,7 +4073,7 @@ SYS.modal.jibao = m => {
   paper(x, y, w, h);
   rect(x + 44, y + 6, w - 88, 12, PAL.lacq); rect(x + 44, y + 17, w - 88, 1, PAL.jiang);
   txt('季报', 90, y + 12, 8, '#fff6dc', 'center', PAL.jiang);
-  txt('前' + yearOf(m.t) + '年 ' + SEASON[((m.t % 4) + 4) % 4], 90, y + 25, 5.5, LABC, 'center', null, 1, 1);
+  txt(yearTxt(m.t) + ' ' + SEASON[((m.t % 4) + 4) % 4], 90, y + 25, 5.5, LABC, 'center', null, 1, 1);
   rs.forEach((r, i) => {
     const c = C(r.id), ry = y + 31 + i * 24;
     if (c) {
@@ -4154,6 +4200,8 @@ const fakeWhat = c => c.role === 'merchant' ? '私铸钱币' : ['ruler', 'noble'
 function exposeSec(s, by) {
   if (!s || s.exposed) return;
   s.exposed = true; SFX.secret();
+  // (dirt the whole town knows holds nobody: the hook made of it is gone)
+  for (const id in W.hooks || {}) if (W.hooks[id].sid === s.id) { delete W.hooks[id]; if (alive(C(id))) logLine('握着' + nm(C(id)) + '的把柄没用了', '#dddddd', true); }
   const p = P(), sev = SEV[s.type] || 1, gl = guiltyOf(s).map(C).filter(Boolean);
   logLine('秘密传开了：' + secretText(s), '#ffb0d0');
   if (s.type === 'affair') for (const g of gl) {
@@ -4300,13 +4348,15 @@ function aiResolve(s) {
   if (s.type === '流言') { W.queue.push({ ev: 'rumor', a: o.id, tg: t.id }); return; }
   if (s.type === '构陷') { W.queue.push({ ev: 'framed', a: o.id, tg: t.id, what: fakeWhat(t) }); return; }
   // 刺杀: a knife in the night. Guards, 廉颇 and the 护卫 perk make it miss; a hit costs health (a frail cat may die of it)
-  let pr = clamp(.3 + .03 * (stat(o, 3) - stat(t, 3)), .1, .6) * (1 - guardCut()) - (typeof useGuard === 'function' && useGuard() ? .25 : 0);
+  // (廉颇's soldiers stop the knife at the door and take the man: that is what their favour promised)
+  const g = (t.id === W.player || household().includes(t)) && typeof useGuard === 'function' && useGuard();
+  let pr = clamp(.3 + .03 * (stat(o, 3) - stat(t, 3)), .1, .6) * (1 - guardCut());
   if (hasPerkF('护卫')) pr *= .5;
-  const hurt = chance(Math.max(.03, pr)), caught = chance(hurt ? .4 : .7);
+  const hurt = !g && chance(Math.max(.03, pr)), caught = g || chance(hurt ? .4 : .7);
   // (growth's addWound: -20 and a scar or a limp, on top of the knife's -20)
   if (hurt) { if (typeof addWound === 'function') { addHealth(t, -20); addWound(t); } else addHealth(t, -40); }
   if (caught) { const q = addSecret('murder', o.id, t.id); q.try = true; if (!q.known.includes(W.player)) q.known.push(W.player); }
-  W.queue.push({ ev: 'assassin', a: o.id, tg: t.id, hurt, caught });
+  W.queue.push(Object.assign({ ev: 'assassin', a: o.id, tg: t.id, hurt, caught }, g ? { guard: 1 } : {}));
   if (hurt && t.health <= 0) { t.flags.cause = '夜里遇刺身亡'; die(t); homeTick(); }
   if (t.id === W.player && alive(t)) addStress(t, 15, '遇刺');
 }
@@ -4434,7 +4484,9 @@ EV.schDone = e => {
     if (!alive(t)) return null;
     const nf = typeof friendsOf === 'function' ? friendsOf(p).length + 1 + '/' + maxFriends(p) : '';
     const O = [opt('「以后常来往。」', n + '好感+25（16季） · 不结为挚友', () => { W.cool['zj_' + t.id] = 12; })];
-    if (e.fr) O.unshift(opt('「你我之间，不必见外。」', '结为挚友 · 好感+25 · 可求助' + (nf ? ' · 挚友 ' + nf : ''), () => { mkFriend(p, t); logLine('你与' + n + '结为挚友', '#ffe08a'); SFX.happy(); }));
+    // (checked again now: another 知己 card shown in between may have filled the last place)
+    const fr = e.fr && !isFriendF(t, p) && !isRivalF(t, p) && !(typeof maxFriends === 'function' && typeof friendsOf === 'function' && friendsOf(p).length >= maxFriends(p));
+    if (fr) O.unshift(opt('「你我之间，不必见外。」', '结为挚友 · 好感+25 · 可求助' + (nf ? ' · 挚友 ' + nf : ''), () => { mkFriend(p, t); logLine('你与' + n + '结为挚友', '#ffe08a'); SFX.happy(); }));
     return { title: '笼络', who: [t.id], text: `这几季你常去${n}那里走动，逢事就帮一把。${ta(t)}如今很信得过你。`, opts: O };
   }
   if (s.type === '勾引') return alive(t) ? { title: '勾引', who: [t.id], text: `${n}托人带了句话：今晚后门不闩。` + (e.sec ? '这件事不能让人知道。' : ''), opts: [opt('去', e.sec ? '成为情人（秘密）' : '成为情人', () => {})] } : null;
@@ -4482,7 +4534,8 @@ EV.framed = e => {
 EV.assassin = e => {
   const o = C(e && e.a), t = (e && e.tg && C(e.tg)) || P(); if (!o || !t) return null;
   const you = t.id === W.player, at = you ? '你' : who(t);
-  const text = `半夜有人翻墙进了狸宅，摸到${at}的屋里。` + (!e.hurt ? '被家丁撞见，丢下刀跑了。' : alive(t) ? `刀子扎进了${you ? '你' : ta(t)}的肩膀。` : `${nm(t)}没能挺过去。`) +
+  const text = e.guard ? `半夜有人翻墙进了狸宅，刚落地就被廉颇的老兵按住了。他供出是${nm(o)}派来的。`
+    : `半夜有人翻墙进了狸宅，摸到${at}的屋里。` + (!e.hurt ? '被家丁撞见，丢下刀跑了。' : alive(t) ? `刀子扎进了${you ? '你' : ta(t)}的肩膀。` : `${nm(t)}没能挺过去。`) +
     (e.caught ? `人抓住了，供出是${nm(o)}派来的。` : '人没抓住。');
   // (what it cost is already done: the hint only says so, and only while the one who was hurt still lives)
   const cost = e.hurt && alive(t) ? (you ? '' : nm(t)) + '健康-40' : '';
@@ -4524,7 +4577,7 @@ function schAct(type, c) {
   const T = SCH[type], p = P(), hostile = T.k === 'h';
   const probe = { type, owner: p.id, target: c.id, prog: 0, sec: T.sec || 100, agents: [] }, risk = schRisk(probe);
   const done = { 笼络: '成则好感+25', 勾引: '成则情人', 构陷: '成则得伪证', 离间: '让' + ta(c) + '疏远一人', 刺杀: '成算' + R(killOdds(probe) * 100) + '%' }[type];
-  const hint = '每季+' + schRate(probe) + ' · ' + done + (risk ? ' · 败露' + R(risk) + '%' : '');
+  const hint = '进度+' + schRate(probe) + '%/季 · ' + done + (risk ? ' · 败露' + R(risk) + '%' : '');
   const no = () => {
     if (type === '刺杀' && c.immortal) return '守卫森严';
     if (type === '勾引' && opinion(c, p) < 0) return '好感需 0 以上';
@@ -4537,7 +4590,7 @@ function schAct(type, c) {
     if (!spendAp(1)) return;
     const s = startScheme(type, c, { third: x }); if (!s) { toast('这件事办不成', '#dddddd'); return; }
     if (type === '构陷' || type === '离间') addStress(p, '诚实');
-    toast(type + '：' + nm(c) + ' · 每季+' + schRate(s), '#ffe08a'); SFX.secret(); didAct(SCH_KIND[type], c, T.st, true);
+    toast(type + '：' + nm(c) + ' · 进度+' + schRate(s) + '%/季', '#ffe08a'); SFX.secret(); didAct(SCH_KIND[type], c, T.st, true);
   };
   const ids = { 笼络: 'sway', 勾引: 'court', 构陷: 'frame', 离间: 'sow', 刺杀: 'murder' };
   return mkAct({ id: ids[type], kind: SCH_KIND[type], n: type, ap: 1, grp: hostile ? '谋' : '友', hint: type === '勾引' && (p.sp || c.sp) ? withTip(hint, '专一', '诚实') : hint, no,
@@ -4571,8 +4624,9 @@ function exposeAct(c, secs) {
 const hookK = s => s.type === 'affair' ? 'weak' : 'strong';
 const canHold = (c, s) => { const h = holdsHook(c.id); return !h || (h === 'weak' && hookK(s) === 'strong'); };
 function bmAct(c, secs) {
-  const use = secs.filter(s => !s.paid || canHold(c, s));
-  return mkAct({ id: 'blackmail', kind: 'blackmail', n: '勒索', ap: 1, grp: '谋', hint: withTip('要钱 · 或握为把柄', '诚实', '仁厚', '胆小'), no: () => use.length ? '' : '钱要过了，把柄也在手',
+  // (a secret is held over someone once: a weak hook spent is spent, it does not grow back from the same dirt)
+  const use = secs.filter(s => !s.paid || (!s.held && canHold(c, s)));
+  return mkAct({ id: 'blackmail', kind: 'blackmail', n: '勒索', ap: 1, grp: '谋', hint: withTip('要钱 · 或握为把柄', '诚实', '仁厚', '胆小'), no: () => use.length ? '' : '钱要过了，把柄也握过了',
     fn: () => pickSecret(use, s => bmMenu(c, s)) });
 }
 function bmMenu(c, s) {
@@ -4583,9 +4637,9 @@ function bmMenu(c, s) {
     if (ok) { addFish(gain); addMemo(c, p, '勒索我', -25, 20); addStress(p, '诚实'); addStress(p, '仁厚'); if (c.tr.includes('记仇')) mkRival(c, p); }
     else { addPrest(-5); addMemo(c, p, '勒索我', -40, 20); mkRival(c, p); if (chance(.4)) { toast(nm(c) + '抢先把事情说了出去', '#ff9a8a'); exposeSec(s, c.id); } else toast(nm(c) + '不吃这一套', '#ff9a8a'); }
     didAct('blackmail', c, 3, ok); } });
-  if (canHold(c, s)) { const k = hookK(s); O.push({ n: '握为把柄', style: 'gold', s: (k === 'strong' ? '强：每8季可用一次' : '弱：只能用一次') + ' · ' + ta(c) + '好感-25', fn: () => {
+  if (!s.held && canHold(c, s)) { const k = hookK(s); O.push({ n: '握为把柄', style: 'gold', s: (k === 'strong' ? '强：每8季可用一次' : '弱：只能用一次') + ' · ' + ta(c) + '好感-25', fn: () => {
     if (!spendAp(1)) return;
-    giveHook(c.id, k, null, s.id); addMemo(c, p, '勒索我', -25, 20); addStress(p, '诚实'); didAct('blackmail', c, 3, true); } }); }
+    s.held = true; giveHook(c.id, k, null, s.id); addMemo(c, p, '勒索我', -25, 20); addStress(p, '诚实'); didAct('blackmail', c, 3, true); } }); }
   pickOpt('勒索' + nm(c), O);
 }
 // what a hook on c can make them do right now
@@ -4618,7 +4672,7 @@ function hookMenu(c) {
 }
 const hookAct = c => { const h = W.hooks[c.id], U = hookUses(c); return mkAct({ id: 'hook', kind: 'hook', n: h.fav ? '人情' : '把柄', ap: 0, grp: '谋', hint: (h.k === 'strong' ? '强' : '弱') + ' · ' + (U.length ? U.map(u => u.n).join(' ') : '眼下用不上'),
   no: () => hookWait(c.id) ? hookWait(c.id) + ' 季后才能再用' : !U.length ? '眼下用不上' : '', fn: () => hookMenu(c) }); };
-const schHint = s => '每季+' + schRate(s) + (schOpen(s) ? '' : ' · 败露' + R(schRisk(s)) + '%');
+const schHint = s => '进度+' + schRate(s) + '%/季' + (schOpen(s) ? '' : ' · 败露' + R(schRisk(s)) + '%');
 
 // ---------------------------------------------------------- the scheme card and the 门下 window
 function openScheme(id) { if (!schOf(id)) return; MODAL.push({ type: 'scheme', sid: id, hold: true }); SFX.page(); }
@@ -4646,8 +4700,8 @@ function drawSchemeCard(m) {
   bar('进度', s.prog, mine ? '#d6a23e' : '#c0304a', y + 36, R(s.prog) + '%');
   if (mine && !schOpen(s)) bar('隐秘', schSec(s), '#4f78a8', y + 46, String(R(schSec(s))));
   else txt(mine ? '明着来，不怕人知道' : '不管它，它就会成', bx, y + 48.5, 6, LABC, 'left', null, 1, 1);
-  const info = mine ? '每季 +' + schRate(s) + (schOpen(s) ? '' : ' · 败露 ' + R(schRisk(s)) + '%/季') + (s.type === '刺杀' ? ' · 成算 ' + R(killOdds(s) * 100) + '%' : '')
-    : '每季 +' + schRate(s) + (seatOn('耳目', 1) ? '（耳目挡了 ' + seatS('耳目') + '）' : '');
+  const info = mine ? '进度 +' + schRate(s) + '%/季' + (schOpen(s) ? '' : ' · 败露 ' + R(schRisk(s)) + '%/季') + (s.type === '刺杀' ? ' · 成算 ' + R(killOdds(s) * 100) + '%' : '')
+    : '进度 +' + schRate(s) + '%/季' + (seatOn('耳目', 1) ? '（耳目挡了 ' + seatS('耳目') + '）' : '');
   txt(fitT(info, w - 16, 6, 1), x + 8, y + 64, 6, '#3a2418', 'left', null, 1, 1);
   const ay = y + 72;
   if (mine && SCH[s.type].k === 'h') {
@@ -4751,10 +4805,12 @@ SYS.acts.push((c, A) => {
   const d = A.find(a => a.id === 'dismiss'), S = seatOf(c);
   if (d && S) { const f0 = d.fn; d.fn = () => { f0(); unseat(S.n); }; d.danger += ' · 离开门下'; }
   if (!reach(c)) return;
-  if (at('court') >= 0) swap('court', schAct('勾引', c));       // 示好 is now a scheme
+  // (the plan already running on this cat shows as its progress button, not a second grey starter of the same name)
+  const run = mySchemes().find(s => s.target === c.id), ai = W.schemes.find(s => s.ai && s.seen && s.owner === c.id);
+  const sch = type => run && run.type === type ? [] : [schAct(type, c)];
+  if (at('court') >= 0) swap('court', sch('勾引')[0]);       // 示好 is now a scheme
   if (at('spy') >= 0) swap('spy', spyAct(c));
   // whatever is running on this cat comes first
-  const run = mySchemes().find(s => s.target === c.id), ai = W.schemes.find(s => s.ai && s.seen && s.owner === c.id);
   if (run) A.push(mkAct({ id: 'scheme', n: run.type + ' ' + R(run.prog) + '%', ap: 0, open: true, gold: true, hint: schHint(run), fn: () => openScheme(run.id) }));
   if (ai) A.push(unmaskAct(ai));
   const secs = secretsAbout(c).filter(s => knows(s) && guiltyOf(s).includes(c.id) && !guiltyOf(s).includes(W.player));
@@ -4762,11 +4818,11 @@ SYS.acts.push((c, A) => {
   if (holdsHook(c.id)) A.push(hookAct(c));
   if (W.soc && W.soc.owe === c.id) A.push(repayOweAct(c));
   if (ageOf(c) < 16 || ageOf(p) < 16) return;
-  A.push(schAct('笼络', c));
+  A.push(...sch('笼络'));
   // no plots against the people you live with, and no knife for your own blood
   if (household().includes(c) || c.id === p.sp) return;
-  A.push(schAct('构陷', c), schAct('离间', c));
-  if (!closeKin(c, p) && c.house !== 'li') A.push(schAct('刺杀', c));
+  A.push(...sch('构陷'), ...sch('离间'));
+  if (!closeKin(c, p) && c.house !== 'li') A.push(...sch('刺杀'));
 });
 SYS.rows.push((y, lim) => {
   if (!W.schemes || !W.schemes.length) return 0;
@@ -5089,12 +5145,13 @@ function nightChamp() {
   return adults(household()).filter(c => c !== p).sort((a, b) => a.born - b.born)[0] || null;
 }
 // the chance to stay hidden, all told: not found (谋), or found and the soldier beaten
-const cellarHint = bing => { const a = pct(stat(P(), 3), 8), d = duelOdds('比剑', bing, { bonus: cellarBonus() });
+// (廉颇's soldiers at the door: nobody gets to the cellar at all)
+const cellarHint = bing => { if (cellarBonus()) return withTip('藏住 100%（廉颇的老兵守着门）', '胆小');
+  const a = pct(stat(P(), 3), 8), d = duelOdds('比剑', bing, {});
   return withTip('藏住 ' + R((a + (1 - a) * d) * 100) + '%（谋，搜到就比剑）', '胆小'); };
 function cellar(bing, ok, fail) {
-  if (chk(3, 8)) { ok(); return; }
-  const b = cellarBonus(); if (b) useGuard();
-  startDuel('比剑', bing, win => win ? ok() : fail(), { why: '他掀开了地窖的盖板 · 胜则藏住' + (b ? ' · 有人护卫' : ''), bonus: b });
+  if (useGuard() || chk(3, 8)) { ok(); return; }
+  startDuel('比剑', bing, win => win ? ok() : fail(), { why: '他掀开了地窖的盖板 · 胜则藏住' });
 }
 // 夜里: someone in the storeroom
 // (the 家丁头 on 护院 has intrigue's own card, guardCard: this one is for a house without a watch)
@@ -5104,8 +5161,10 @@ function duelThief() {
   const O = [], side = nightChamp();
   // a house with guards doesn't need its head holding the lamp
   if (men) O.push(opt('带家丁去堵门', '鱼干+20 · 名望+3', caught));
-  O.push(opt(side ? '叫' + nm(side) + '提灯去看' : '提灯去看', duelHint('比剑', zei, { bonus, side }, '鱼干+20 · 名望+3'), () => { if (bonus) useGuard();
-    startDuel('比剑', zei, win => { if (win) caught(); else { addFish(-15); toast('贼翻墙跑了', '#ff9a8a'); } }, { why: '胜：鱼干+20 · 名望+3' + (bonus ? ' · 有人护卫' : ''), bonus, side }); }));
+  // (廉颇's soldiers catch him: that is the one time they step in)
+  if (bonus) O.push(opt('叫廉颇的老兵去堵', '鱼干+20 · 名望+3', () => { useGuard(); caught(); }));
+  else O.push(opt(side ? '叫' + nm(side) + '提灯去看' : '提灯去看', duelHint('比剑', zei, { side }, '鱼干+20 · 名望+3'), () => {
+    startDuel('比剑', zei, win => { if (win) caught(); else { addFish(-15); toast('贼翻墙跑了', '#ff9a8a'); } }, { why: '胜：鱼干+20 · 名望+3', side }); }));
   // (staying in bed galls the brave: growth's 心烦 for 勇猛)
   if (!men) O.push(opt('喊醒家丁', withTip('鱼干-15', '勇猛'), () => { addFish(-15); addStress(P(), '勇猛'); }));
   O.push(opt('明天再说', withTip('鱼干-40', '勇猛'), () => { addFish(-40); addStress(P(), '勇猛'); }));
@@ -5161,7 +5220,7 @@ SYS.acts.push((c, A) => {
 //   king() the reigning 秦王 (W.kingId, else the line of kings) · qm() 政's mother (the 太后 of the story) or null
 //   inQin() the house lives in 咸阳 · a2Here() act two in 咸阳 · a2Hd() act two in 邯郸 · goCity(city) moves the house
 //   W.a2 { line 'xy' 咸阳 | 'hd' 邯郸 line | 'free' stayed a merchant | 'zhao' the betrayer; wang 王权 0–100; yi 政's 忌惮 0–100
-//     (−yi/2 on his opinion of you); lonely 太后寂寞; claim 成蟜's claim; laoMen 嫪毐's men; laoIn 嫪毐 at court; lvDown 吕不韦
+//     (−yi/2 on his opinion of you); lonely 太后寂寞; claim 成峤's claim; laoMen 嫪毐's men; laoIn 嫪毐 at court; lvDown 吕不韦
 //     has fallen; xiang / zhongfu who holds 相邦 / 仲父 ('you' | 'lv' | an id | null); fief 封君; recs your men at court;
 //     cx courtiers added in play; gone ids put out of court; side 冠礼 'king'|'lao'|'none'|'coup'; quell you put the revolt
 //     down yourself; coup 'lao' when 嫪毐 won; end null (never served 秦) | 'E1' 'E2' 'E3' 'E3b' 'E4' 'E5' 'retire' (a 客卿
@@ -5334,6 +5393,21 @@ function powerOf(k) {
   return n;
 }
 const courtFriend = () => courtSeats().some(s => s.lean === 'you') || opinion(C('huayang'), P()) >= 30;
+// how much more opinion of you a courtier needs to lean your way (see leanOf): 20, and at least what they give any
+// other side (a tie goes to you); 0 when already yours, null for a side's own head, who never comes over
+function courtGap(s) {
+  if (!s || s.lean === 'you') return 0;
+  const b = s.bias || {}; let m = 20;
+  for (const k of LEAD_ORD) { if (k === 'you') continue; const L = LEAD[k].cat(); if (!L) continue; if (L === s.c) return null; m = Math.max(m, opinion(s.c, L) + (b[k] || 0)); }
+  return Math.max(1, m - opinion(s.c, P()) - (b.you || 0));
+}
+// the one closest to coming over (华阳夫人 counts at 30): [cat, points short] or null
+function courtNearest() {
+  let best = null;
+  for (const s of courtSeats()) { const g = courtGap(s); if (g && (!best || g < best[1])) best = [s.c, g]; }
+  const hy = C('huayang'); if (alive(hy) && cityOf(hy) === 'xianyang') { const g = 30 - opinion(hy, P()); if (g > 0 && (!best || g < best[1])) best = [hy, g]; }
+  return best;
+}
 const xiangName = () => { const x = W.a2.xiang; return x === 'you' ? '你' : x === 'lv' ? '吕不韦' : x && alive(C(x)) ? nm(C(x)) : '空着'; };
 // 政's standing as 子楚's son (not saved: worked out from what the town knows)
 function legit() {
@@ -5391,7 +5465,7 @@ function laoFalls() {
 function a2Doom(cause) {
   const A = W.a2, p = P(); A.end = 'E5'; if (A.xiang === 'you') A.xiang = null; if (A.zhongfu === 'you') A.zhongfu = null;
   if (W.job && typeof endJob === 'function') endJob(false, '人不在了');
-  W.rank = 0; W.patron = null; W.fish = Math.floor(W.fish / 2);
+  W.rank = 0; W.patron = null; W.fish = Math.floor(W.fish / 2); A.fief = false;
   goCity('handan');
   if (alive(p)) { p.flags.cause = cause; die(p); }
   logLine('狸家连夜逃回了邯郸', '#ff9a8a');
@@ -5405,7 +5479,7 @@ function a2Crown() {
   lvFall('');
   PORT.clear(); MINI.clear(); SFX.happy(); logLine('咸阳宫的王座上，坐的是你了。', '#ffe08a');
 }
-// 嫪毐 wins the night: 政 is gone, a child of his (else 成蟜, else he himself) is king, and you are 仲父 beside him
+// 嫪毐 wins the night: 政 is gone, a child of his (else 成峤, else he himself) is king, and you are 仲父 beside him
 function laoWins(against) {
   const A = W.a2, lao = C('laoai'), z = C('zheng');
   const h = (lao ? lao.kids.map(C).find(alive) : null) || qinCat('chengjiao') || lao;
@@ -5429,7 +5503,7 @@ function endAs(k, mom) {
   if (k === 'E1' && alive(z)) addOp(z, p, 5);
   // (E3b: 'mom' — the king owns his mother's house, 外戚 — or true: he knows his real father was a 狸)
   if (k === 'E2' || k === 'E3b') { W.rank = Math.max(W.rank, 4); A.zhongfu = A.xiang = 'you'; A.zfBy = W.player; if (k === 'E3b') { A.blood = mom ? 'mom' : true; A.bloodBy = W.player; if (alive(z)) addMemo(z, p, mom ? '外戚' : '骨肉', mom ? 20 : 40); } }
-  if (k === 'E4') { W.rank = 2; if (A.xiang === 'you') A.xiang = null; if (A.zhongfu === 'you') A.zhongfu = null; if (W.a3) W.a3.exileBy = W.player; }
+  if (k === 'E4') { W.rank = 2; if (A.xiang === 'you') A.xiang = null; if (A.zhongfu === 'you') A.zhongfu = null; if (W.a3) { W.a3.exileBy = W.player; a3Ban(); } }
   if (k === 'E5') { a2Doom('被赐死'); return; }
   PORT.clear(); MINI.clear();
 }
@@ -5467,7 +5541,7 @@ function aiCourt() {
       A.yi = clamp(A.yi + d, 0, 100);
     }
   }
-  // 成蟜's claim grows with the talk about 政's father
+  // 成峤's claim grows with the talk about 政's father
   const ck = C('chengjiao');
   if (W.t % 4 === 0 && alive(ck)) {
     const s = W.secrets.find(x => x.type === 'bastard' && x.kid === 'zheng');
@@ -5492,13 +5566,15 @@ function laoFallback() {
   W.a2.laoIn = true; W.a2.laoMen = Math.max(1, W.a2.laoMen);
   logLine('太后宫里多了一个宦官，叫嫪毐。个子很高，胡子拔得很干净。', '#c8e0ff', !inQin());
 }
-// a king who dies off the books (嫪毐's line, a crown taken at the capping) leaves one: his eldest son, the old line, 成蟜,
+// a king who dies off the books (嫪毐's line, a crown taken at the capping) leaves one: his eldest son, the old line, 成峤,
 // else the 宗室 put up 子婴 (a 狸 king is followed by the next head of the house, see newHead)
 function kingCheck() {
-  const d = W.kingId && C(W.kingId); if (!d || alive(d) || d.house === 'li' || W.t >= HISTD.ziying) return;
+  const d = W.kingId && C(W.kingId); if (!d || alive(d) || d.house === 'li' || (W.a3 && W.a3.qinFell)) return;
+  // (after 前206 there is no 子婴 left to put up: a line with no son ends 秦)
+  const late = W.t >= HISTD.ziying;
   const nx = d.kids.map(C).filter(k => alive(k) && !k.female).sort((a, b) => a.born - b.born)[0] || firstAlive(QIN_KINGS) || qinCat('chengjiao') ||
-    spawnHist({ id: 'ziying', disp: '子婴', sur: '嬴', name: '婴', born: bornAt(240), role: 'ruler', robe: 'qin', state: '秦', loc: 'xpalace', tr: ['多疑', '节制'], st: [4, 7, 6, 9] });
-  if (!alive(nx)) return;
+    (late ? null : spawnHist({ id: 'ziying', disp: '子婴', sur: '嬴', name: '婴', born: bornAt(240), role: 'ruler', robe: 'qin', state: '秦', loc: 'xpalace', tr: ['多疑', '节制'], st: [4, 7, 6, 9] }));
+  if (!alive(nx)) { if (late) qinFall(nm(d) + '死了，没有留下儿子。宗室争了几年，秦就散了。'); return; }
   W.kingId = nx.id; nx.role = 'ruler'; if (nx.disp !== '子婴' && !/^秦/.test(nm(nx))) nx.disp = '秦王' + nx.name;
   logLine(nm(nx) + '即位。', '#c8e0ff', !inQin());
 }
@@ -5554,7 +5630,9 @@ function act1Road(k) {
   // (road A meets it in 咸阳's first card)
   if (W.flags.renamed && k !== 'A') logLine('异人回到咸阳，穿楚服拜见华阳夫人，改名子楚。', '#c8e0ff');
   delete W.flags.renamed;
-  if (k === 'A') { A.line = 'xy'; W.act = 2; goCity('xianyang'); if (W.rank < 1) W.rank = 1; W.patron = 'yiren'; addFish(80, true); logLine('邯郸的铺子盘了出去，得鱼干 80', '#ffe08a'); if (alive(yr)) addMemo(yr, p, '共患难', 10); }
+  // (the house is in 咸阳 from this season on: its arrival card comes now, before anything done at 秦's court)
+  if (k === 'A') { A.line = 'xy'; W.act = 2; goCity('xianyang'); if (W.rank < 1) W.rank = 1; W.patron = 'yiren'; addFish(80, true); logLine('邯郸的铺子盘了出去，得鱼干 80', '#ffe08a'); if (alive(yr)) addMemo(yr, p, '共患难', 10);
+    W.queue = W.queue.filter(q => q.ev !== 'xianyang'); W.queue.unshift({ ev: 'xianyang' }); }
   if (k === 'B') { A.line = 'hd'; W.act = 2; A.guard = true; if (alive(yr)) addMemo(yr, p, '托付', 10); if (q) addMemo(q, p, '守护', 15); }
   if (k === 'C') { A.line = 'free'; W.act = 1.5; A.letterT = 47; }
   if (k === 'D') { A.line = 'zhao'; W.act = 1.5; A.letterT = 47; const zw = cityRuler(); if (alive(zw)) addOp(zw, p, 10); }
@@ -5571,7 +5649,8 @@ function act1Roads() {
 
 // ---------------------------------------------------------- the story's cards
 EV.xianyang = () => {
-  const yr = C('yiren'), hy = C('huayang'), xj = C('xiaji'), fj = C('fanju'), p = P(); if (!a2Here() || W.a2.line !== 'xy' || !alive(yr)) return null;
+  const yr = C('yiren'), hy = C('huayang'), xj = C('xiaji'), fj = C('fanju'), p = P(); if (!a2Here() || W.a2.line !== 'xy' || !alive(yr) || W.flags.xyCard) return null;
+  W.flags.xyCard = true;
   return { title: '咸阳', who: ['yiren', 'huayang', 'xiaji'].filter(id => alive(C(id))),
     text: '异人穿着一身楚服去见华阳夫人。夫人拉着他的手，说了很久的楚语。第二天，太子宫里的人都改口叫他子楚。你被安排在市东的一座小院里。',
     opts: [opt('「给公子再备几身楚服。」', '鱼干-40 · 华阳+15 · ' + nm(yr) + '+5', () => { addFish(-40); addOp(hy, p, 15); addOp(yr, p, 5); }, () => W.fish >= 40),
@@ -5783,7 +5862,7 @@ EV.qingsuan = () => {
   const A = W.a2, z = C('zheng'), p = P(); if (!a2Here() || A.end || !alive(p)) return null;
   const k = king();
   // 嫪毐 won the night: he sits beside the new king and wants you there too
-  if (A.coup === 'lao') return { title: '假父', who: [k ? k.id : p.id].concat(alive(C('laoai')) ? ['laoai'] : []),
+  if (A.coup === 'lao') return { title: '假父', who: [...new Set([k ? k.id : p.id].concat(alive(C('laoai')) ? ['laoai'] : []))],
     text: k && k.id === 'laoai' ? '嫪毐坐上了王座，袖口上还有血。他看着你：「往后，这朝堂还要你来撑着。」' : '新王坐在王座上，脚还够不着地。嫪毐站在一旁，笑着看你：「往后，我们一起辅佐王上。」',
     opts: [opt('「国事由我。」', '仲父摄政', () => endAs('E2')), opt('「臣请辞。」', '功成身退', () => endAs('retire'))] };
   if (!alive(z)) { A.end = 'E1'; return null; }
@@ -5824,8 +5903,7 @@ EV.act2end = () => {
   const z = C('zheng'), zo = alive(z) && A.end !== 'E3' ? nm(z) + '对你 ' + a2s(opinion(z, p)) + ' · ' : '';
   return { title: '第二幕 · 仲父', who: [p.id].concat(alive(z) ? [z.id] : alive(king()) && king() !== p ? [king().id] : []), big: true,
     text: (A.end ? endTxt() : '秦国换了三个王。狸家还在邯郸。') + `\n身份：${RANKS[W.rank]} · ${zo}势 ${powerOf('you')}\n狸家 ${family().length} 口 · 鱼干 ${W.fish}`,
-    opts: [opt('「看天下。」', '第三幕 · 一统', () => { W.act = 3; }),
-      ['E4', 'E5'].includes(A.end) ? opt('「继续经营狸家。」', '不问天下事', () => { W.act = 3; A.free = true; }) : null].filter(Boolean) };
+    opts: [opt('「看天下。」', '第三幕 · 一统', () => { W.act = 3; })] };
 };
 
 // ---------------------------------------------------------- actions: 宫 (进言, 荐贤), 行 (出使, 领兵, 静候一年), on cards
@@ -5836,10 +5914,10 @@ const zhengKing = () => W.kingId === 'zheng' && alive(C('zheng'));
 const minorNo = () => ageOf(P()) < 16 ? '年纪还小' : '';
 function memoAct() {
   const dc = 8 + 2 * W.rank, k = king();
-  return mkAct({ id: 'memorial', kind: 'memorial', n: '上朝进言', ap: 1, hint: chkHint(1, dc) + ' · ' + (zhengKing() ? '王权+3 ' + k.name + '+2' : (k ? nm(k) : '王') + '+6') + ' · 名望+3',
+  return mkAct({ id: 'memorial', kind: 'memorial', n: '上朝进言', ap: 1, hint: chkHint(1, dc) + ' · 功+2 · ' + (zhengKing() ? '王权+3 ' + k.name + '+2' : (k ? nm(k) : '王') + '+6') + ' · 名望+3',
     no: () => minorNo() || (W.rank < 1 ? '要先当上舍人' : W.cool.memo ? '这季说过了' : !alive(king()) ? '朝中无王' : ''),
     fn: () => { const k2 = king(); if (!k2 || !spendAp(1)) return; W.cool.memo = 1; const ok = chk(1, dc);
-      if (ok) { if (zhengKing()) { W.a2.wang = Math.min(100, W.a2.wang + 3); addOp(k2, P(), 2); } else addOp(k2, P(), 6); addPrest(3); toast(nm(k2) + '点了点头', '#9fe89a'); } else { addOp(k2, P(), -2); toast('没人接你的话', '#dddddd'); }
+      if (ok) { if (zhengKing()) { W.a2.wang = Math.min(100, W.a2.wang + 3); addOp(k2, P(), 2); } else addOp(k2, P(), 6); addPrest(3); addMerit(2, '进言'); toast(nm(k2) + '点了点头', '#9fe89a'); } else { addOp(k2, P(), -2); toast('没人接你的话', '#dddddd'); }
       didAct('memorial', k2, 1, ok); } });
 }
 function recAct() {
@@ -5883,16 +5961,16 @@ const waitAct = () => mkAct({ id: 'wait', kind: 'wait', n: '静候一年', ap: 0
   } });
 
 // ---------------------------------------------------------- the 朝堂 widget (top right) and the courtier list
-const COURT_TIP = '朝堂：一格是一席，颜色是他倾向谁。金是你，紫是吕不韦，红是王，绿是楚系，灰是宗室。势是席数，加上王权、门客这些。点开看每个人，谁离倒向你最近。';
+const COURT_TIP = '朝堂：一格是一席，颜色是他倾向谁。金是你，紫是吕不韦，红是王，绿是楚系，灰是宗室。朝臣对你好感到 20，又高过对别家的，就倒向你。点开看各差几点。';
 function openCourt() {
   const L = courtSeats(); if (!L.length) { toast('朝中还没有人', '#dddddd'); return; }
   const p = P();
-  // (how far each is from coming over: what their leader has of them, or the neutral line of 20)
-  const gap = s => { const L2 = s.lean && LEAD[s.lean].cat(); return Math.max(19, L2 ? opinion(s.c, L2) + ((s.bias || {})[s.lean] || 0) : 19) + 1 - opinion(s.c, p); };
   pickChar('朝堂 · 你 势' + powerOf('you') + ' · 相邦 ' + xiangName(), L.map(s => s.c), c => openSheet(c.id), c => {
     const s = courtSeats().find(x => x.c === c), k = s && s.lean;
     const head = k && k !== 'you' && LEAD[k].cat() === c;
-    return { txt: (s && s.w > 1 ? '二席 ' : '') + (head ? (k === 'wang' ? '王' : k === 'zong' ? '宗室之首' : LEAD[k].n + '系之首') : k ? (k === 'you' ? '你的人' : '倾向' + LEAD[k].n) : '中立') + ' · 你' + a2s(opinion(c, p)), col: k ? LEAD[k].ink : '#5f5236', v: !s || k === 'you' || head ? -999 : -gap(s) }; });
+    // (how far each is from coming over: 差N)
+    const gp = s && !head && k !== 'you' ? courtGap(s) : 0;
+    return { txt: (s && s.w > 1 ? '二席 ' : '') + (head ? (k === 'wang' ? '王' : k === 'zong' ? '宗室之首' : LEAD[k].n + '系之首') : k ? (k === 'you' ? '你的人' : '倾向' + LEAD[k].n) : '中立') + ' · 你' + a2s(opinion(c, p)) + (gp ? ' 差' + gp : ''), col: k ? LEAD[k].ink : '#5f5236', v: !s || k === 'you' || head ? -999 : -(gp || 999) }; });
 }
 function courtWidget() {
   const A = W.a2; if (!A || W.act !== 2 || !W.flags.act1Done) return false;
@@ -5932,11 +6010,16 @@ EV.courtTip = () => { if (!a2Here()) return null; W.loc = 'home'; MODAL.push({ t
 
 // ---------------------------------------------------------- the goal line
 // what the next rank still asks for, in one short line, and the tab where the first gap is closed (null: nothing missing)
+// (朝中: who is closest to leaning your way, and by how much; 功 with an errand in hand: the errand's own tab)
 function lackTxt() {
   const x = nextPromo(); if (!x) return null;
   const miss = x.need().filter(([, v, n]) => v < n); if (!miss.length) return null;
   const num = miss.filter(([l]) => l !== '朝中').map(([l, v, n]) => ['功', '望', '势'].includes(l) ? l + (n - Math.max(0, v)) : l + '好感' + (n - v)).join(' ');
-  return { s: (num ? '还差 ' + num : '') + (miss.some(([l]) => l === '朝中') ? (num ? ' · ' : '') + '朝中无人' : ''), tab: ['功', '望'].includes(miss[0][0]) ? '宫' : '人' };
+  const nr = miss.some(([l]) => l === '朝中') ? courtNearest() : null;
+  const court = miss.some(([l]) => l === '朝中') ? (nr ? '朝中：' + nm(nr[0]) + '差' + nr[1] : '朝中无人') : '';
+  const j = W.job, d = j && jobDef(j.id), f = miss[0][0];
+  const job = f === '功' && d && TABS[d.tab] ? TABS[d.tab].n : null;
+  return { s: [num ? '还差 ' + num : '', job ? '先办差事' : '', court].filter(Boolean).join(' · '), tab: job || (['功', '望'].includes(f) ? '宫' : '人') };
 }
 function a2Goal() {
   const A = W.a2, z = C('zheng'), p = P(), t = W.t;
@@ -6031,6 +6114,8 @@ const a2Once = () => { for (const l of ['xmarket', 'xtavern', 'xpalace', 'hougon
 SYS.init.push(W => { W.a2 = a2Fresh(); W.kingId = 'zhao'; a2Once(); settleXy(); });
 SYS.load.push(W => {
   a2Once();
+  // (成蟜 is written 成峤 now: the pixel font has 峤; old saves keep his name, the log keeps the old lines)
+  { const cj = W.chars.chengjiao; if (cj) { if (cj.name === '蟜') cj.name = '峤'; if (cj.disp) cj.disp = cj.disp.replace(/蟜/g, '峤'); } }
   const F = a2Fresh();
   if (!W.a2) {
     // a save from before act two: a house that stayed in 邯郸 gets its letter from 咸阳 at the next due date
@@ -6068,7 +6153,8 @@ SYS.season.push(() => {
 // (a head who married into 秦's house hands the house on first, in any act)
 SYS.sched.push(() => { if (royalHead() && !W.queue.some(q => q.ev === 'chujia')) W.queue.unshift({ ev: 'chujia' }); });
 SYS.sched.push(() => {
-  const A = W.a2; if (!A || !W.flags.act1Done || !alive(P())) return;
+  // (a head who died this season still gets the story: 'succession' goes first in the queue, the cards come to the heir)
+  const A = W.a2; if (!A || !W.flags.act1Done) return;
   for (const [t, id, cond] of A2_CAL) if (t === W.t && (cond ? cond() : a2Here()) && !W.queue.some(q => q.ev === id)) W.queue.push({ ev: id });
   if (A.letterT !== null && W.t >= A.letterT && !inQin() && W.act !== 2 && !W.queue.some(q => q.ev === 'laixin' || q.ev === 'guiqin')) {
     if (zhengInHandan()) A.letterT = 100; else { A.letterT = null; W.queue.push({ ev: 'laixin' }); }
@@ -6089,6 +6175,14 @@ SYS.econ.push((inc, cost) => {
   if (inQin() && W.rank >= 3 && W.rank <= 4) cost.push(['相府开销', W.rank * 5]);
 });
 SYS.did.push(() => { CS.k = ''; if (W.a2) locSweep(); });
+// (秦 is gone: nobody to present gifts to, advise or petition; 大计 stays. Runs after the systems that add those: ACT3's
+// init and load hooks move it last)
+function noCourtTab(tab, A) {
+  if (tab !== 'court' || !W.a3 || !W.a3.qinFell || W.kingId) return;
+  for (const id of ['audience', 'tribute', 'advise', 'memorial', 'recommendQ', 'askJob']) { const i = A.findIndex(a => a.id === id); if (i >= 0) A.splice(i, 1); }
+  A.unshift(mkAct({ id: 'nocourt', n: '朝廷', ap: 0, hint: '秦亡了，没有朝廷', no: () => '秦亡了，没有朝廷', fn: () => {} }));
+}
+SYS.tab.push(noCourtTab);
 SYS.tab.push((tab, A) => {
   if (!W.a2 || !W.flags.act1Done || !alive(P())) return;
   if (tab === 'court' && inQin() && W.act >= 2) {
@@ -6118,13 +6212,13 @@ SYS.sheet.push((c, rows) => {
   if (c.id === W.player) { if (W.act === 2) rows.push({ chip: '朝堂', col: '#8a5a10', text: '势 ' + powerOf('you') + ' · 相邦 ' + xiangName() + ' ›', fn: openCourt }); return; }
   const s = courtSeats().find(x => x.c === c), lk = LEAD_ORD.find(k => k !== 'you' && LEAD[k].cat() === c);
   if (lk) rows.push({ chip: '首领', col: LEAD[lk].ink, text: (LEAD[lk].n === '王' ? '王' : LEAD[lk].n + '系') + ' · 势 ' + powerOf(lk) });
-  else if (s) rows.push({ chip: '朝臣', col: s.lean ? LEAD[s.lean].ink : '#6a6268', text: (s.lean ? '倾向' + (s.lean === 'you' ? '你' : LEAD[s.lean].n) : '中立') + ' · ' + (s.w > 1 ? '二席' : '一席') + (s.bing ? ' · 将军' : '') });
+  else if (s) { const gp = courtGap(s); rows.push({ chip: '朝臣', col: s.lean ? LEAD[s.lean].ink : '#6a6268', text: (s.lean ? '倾向' + (s.lean === 'you' ? '你' : LEAD[s.lean].n) : '中立') + ' · ' + (s.w > 1 ? '二席' : '一席') + (s.bing ? ' · 将军' : '') + (gp ? ' · 好感再+' + gp + '倒向你' : '') }); }
   if (c.loc === 'hougong' && W.rank < 2 && !relTo(c) && !closeKin(c, P())) rows.push({ chip: '后宫', col: '#7a5a6a', text: '客卿以上才进得去' });
 });
 // ---- act2 content
 // History's smaller moments between the calendar's big cards (杜邮 … 茅焦), the 邯郸 line (围城之后 … 平原君), what the
 // court sets off by itself (太后召见, 刺客) and a 咸阳 pool (联姻, 政问 …), the news, more court errands and the people it
-// all needs (CHAR2). What happens whether or not you are there (成蟜 is born, 李斯 and 甘罗 find their places, 嫪毐's
+// all needs (CHAR2). What happens whether or not you are there (成峤 is born, 李斯 and 甘罗 find their places, 嫪毐's
 // children, 茅焦) happens in the season hook; the cards only let you take part.
 //   W.a2.ct (a2c()) { lisi: where 李斯 went 'you'|'lv'|'wang' · laoBy: who brought 嫪毐 in 'you'|'lv' · wait: you keep the
 //     太后 waiting (忌惮+2 a season) · cut: 嫪毐 really was cut (no children, few men) · yongT · watch: you watch 雍宫 ·
@@ -6157,7 +6251,7 @@ const giveHookF = (id, k, why) => { if (typeof giveHook === 'function') giveHook
 { const st2 = secretText; secretText = s => s.what && s.type === 'plot' ? nm(C(s.subj)) + s.what : st2(s); }
 
 // ---------------------------------------------------------- people (st = [武, 政, 交, 谋])
-// (韩夫人 is kept safe until 成蟜 is born, then lives like anyone: see the season hook)
+// (韩夫人 is kept safe until 成峤 is born, then lives like anyone: see the season hook)
 Object.assign(HISTD, { baiqi: 24, chengjiao: 94, lisi: 216, dan: 144, hanfuren: 120 });
 for (const id of ['baiqi', 'chengjiao', 'laoai']) HIST_GONE.add(id);
 Object.assign(CHAR2, {
@@ -6174,11 +6268,13 @@ Object.assign(CHAR2, {
 for (const id of ['lisi', 'ganluo', 'maojiao']) { const i = COURT.findIndex(r => r.id === id); if (i >= 0) COURT.splice(i, 1); }
 const MY_XY = ['lisi', 'zhengguo', 'ganluo', 'maojiao'];
 HIST_NEXT.baiqi = () => logLine('白起死在杜邮。', '#c8e0ff');
-HIST_NEXT.chengjiao = () => { if (W.t <= 96) logLine('长安君成蟜在屯留反了，兵败身死。', '#c8e0ff'); };
+HIST_NEXT.chengjiao = () => { if (W.t <= 96) logLine('长安君成峤在屯留反了，兵败身死。', '#c8e0ff'); };
 // 嫪毐's day comes with nobody from the house there to see it: the revolt fails as it did
 HIST_NEXT.laoai = c => {
   const A = W.a2; if (!A || !A.laoIn) return;
   A.laoIn = false; A.laoMen = 0;
+  // (the night he won the capping there was no revolt left to fail: he dies an old man, his children keep their places)
+  if (A.coup === 'lao') return;
   for (const k of c.kids.map(C)) if (alive(k) && ageOf(k) < 16) { k.dieT = null; k.immortal = false; die(k, true); }
   const q = qmNpc(); if (q && cityOf(q) === 'xianyang') q.loc = 'yong';
   logLine('嫪毐在雍城作乱，兵败伏诛。太后迁往雍城。', '#c8e0ff');
@@ -6190,16 +6286,16 @@ function lisiTo(k) {
 function glSeat(k) { const g = C('ganluo'); if (!alive(g)) return; g.loc = 'xpalace'; g.role = 'minister'; addCourtier('ganluo', 1, { [k]: 25 }); }
 function mjSeat() { const m = C('maojiao'); if (!alive(m)) return; m.loc = 'xpalace'; m.role = 'minister'; addCourtier('maojiao', 1, { wang: 15 }); }
 const qmHome = () => { const q = qmNpc(); if (q && q.loc === 'yong') { q.loc = 'hougong'; logLine('太后回了咸阳。', '#c8e0ff', true); } };
-// 成蟜, 子楚's son by the 韩 woman (前256), black as his father (a save from later gets him as he would have been)
+// 成峤, 子楚's son by the 韩 woman (前256), black as his father (a save from later gets him as he would have been)
 function cjBirth() {
   const hf = C('hanfuren'), yr = C('yiren'); if (!alive(hf) || !yr || hf.preg) return;
-  if (W.t < 27) { if (alive(yr)) setPreg(hf, yr.id, { id: 'chengjiao', name: '蟜', disp: '成蟜', sex: 'M' }); return; }
-  mkc({ id: 'chengjiao', name: '蟜', disp: '成蟜', sur: '嬴', born: 27, mom: hf.id, dad: yr.id, bio: yr.id, female: false, g: breed(hf.g, yr.g, Math.random, 'M'), loc: 'hougong',
+  if (W.t < 27) { if (alive(yr)) setPreg(hf, yr.id, { id: 'chengjiao', name: '峤', disp: '成峤', sex: 'M' }); return; }
+  mkc({ id: 'chengjiao', name: '峤', disp: '成峤', sur: '嬴', born: 27, mom: hf.id, dad: yr.id, bio: yr.id, female: false, g: breed(hf.g, yr.g, Math.random, 'M'), loc: 'hougong',
     role: 'noble', robe: 'qin', state: '秦', hist: true, immortal: true, dieT: HISTD.chengjiao, tr: randPers(Math.random, 2) });
   linkKids();
 }
 function cjDies() { const cj = C('chengjiao'); if (!alive(cj)) return; cj.dieT = null; cj.immortal = false; outOfCourt(cj.id); die(cj, true); }
-function cjSaved() { const cj = C('chengjiao'); if (!alive(cj)) return; cj.dieT = null; cj.immortal = false; outOfCourt(cj.id); cj.loc = 'shu'; logLine('成蟜回咸阳请了罪，迁往蜀地', '#c8e0ff'); }
+function cjSaved() { const cj = C('chengjiao'); if (!alive(cj)) return; cj.dieT = null; cj.immortal = false; outOfCourt(cj.id); cj.loc = 'shu'; logLine('成峤回咸阳请了罪，迁往蜀地', '#c8e0ff'); }
 // 嫪毐 comes to court (by: who brought him; know: you know what he is)
 function laoEnter(q, by, know) {
   const lao = spawn2('laoai', 'hougong'); if (!lao) return null;
@@ -6249,13 +6345,13 @@ EV.hanfu = () => {
       opt('「华阳夫人会怎么想？」', '华阳+10 · ' + nm(xj) + '-10', () => { addOp(hy, p, 10); addOp(xj, p, -10); }),
       ours ? opt('「' + (relTo(q) ? '我家的' + relTo(q) : '夫人') + '还在邯郸。」', nm(yr) + '-5 · ' + nm(q) + '+20', () => { addOp(yr, p, -5); addOp(q, p, 20); }) : null].filter(Boolean) };
 };
-// 成蟜's birth: a card in 咸阳, a line in the log elsewhere
+// 成峤's birth: a card in 咸阳, a line in the log elsewhere
 { const b0 = EV.born; EV.born = e => {
   const k = e && e.ids && C(e.ids[0]); if (!k || k.id !== 'chengjiao') return b0(e);
   const yr = C('yiren'), xj = C('xiaji'), hf = C(k.mom), p = P();
-  if (!a2Here()) { logLine('子楚的韩夫人生了个儿子，取名成蟜。', '#c8e0ff', true); return null; }
-  return { title: '成蟜', who: [k.id].concat(hf ? [hf.id] : []).concat(alive(xj) ? [xj.id] : []),
-    text: '韩夫人生了个儿子，取名成蟜。夏夫人抱着他不撒手，说这孩子黑得跟他爹一个样。',
+  if (!a2Here()) { logLine('子楚的韩夫人生了个儿子，取名成峤。', '#c8e0ff', true); return null; }
+  return { title: '成峤', who: [k.id].concat(hf ? [hf.id] : []).concat(alive(xj) ? [xj.id] : []),
+    text: '韩夫人生了个儿子，取名成峤。夏夫人抱着他不撒手，说这孩子黑得跟他爹一个样。',
     opts: [opt('「备一份贺礼。」', '鱼干-30 · ' + (alive(xj) ? nm(xj) : '夏姬') + '+8 · ' + (alive(yr) ? nm(yr) : '子楚') + '+5', () => { addFish(-30); addOp(xj, p, 8); addOp(yr, p, 5); }, () => W.fish >= 30),
       opt('「又一位公子。」', '', () => {})] };
 }; }
@@ -6455,7 +6551,7 @@ EV.dongwang = () => {
   return { title: '东望吾子', who: [xj.id].concat(alive(hy) ? [hy.id] : []).concat(alive(z) ? [z.id] : []),
     text: '夏太后临终前说，不跟先王葬在一起，要葬在杜原东边：东望吾子，西望吾夫。华阳太后听说以后，一天没吃东西。',
     opts: [opt('「遂她的愿。」', '宗室+10 · 华阳-10', () => { A.xiajiWish = true; sideOp('zong', 10); if (alive(hy)) addOp(hy, p, -10); }),
-      opt('「按礼合葬。」', '华阳+10 · 成蟜的声势+5', () => { A.xiajiWish = false; if (alive(hy)) addOp(hy, p, 10); A.claim = Math.min(100, A.claim + 5); }),
+      opt('「按礼合葬。」', '华阳+10 · 成峤的声势+5', () => { A.xiajiWish = false; if (alive(hy)) addOp(hy, p, 10); A.claim = Math.min(100, A.claim + 5); }),
       opt('「请王上定。」', '王权+5 · 王上+5', () => { wangAdd(5); if (alive(z)) addOp(z, p, 5); })] };
 };
 EV.huixing = () => {
@@ -6475,20 +6571,21 @@ EV.changxin = () => {
       opt('备礼道贺', '鱼干-60 · 嫪毐+20 · 王上-5', () => { addFish(-60); addOp(lao, p, 20); if (alive(z)) addOp(z, p, -5); }, () => W.fish >= 60),
       opt('「不说话。」', '', () => {})] };
 };
-// 屯留: 成蟜's letter. With the 宗室 behind him (声势 50) he takes the throne, and you are 仲父 beside him (E2)
+// 屯留: 成峤's letter. With the 宗室 behind him (声势 50) he takes the throne, and you are 仲父 beside him (E2)
 function cjLetter() {
   const cj = C('chengjiao'), z = C('zheng'), p = P(), A = W.a2;
   const s = addSecret('plot', cj.id, p.id);
-  if (A.claim < 50) { cjDies(); if (chance(.5)) { yiAdd(30); if (alive(z)) s.known.push(z.id); logLine('成蟜的营里搜出了你的信', '#ff9a8a'); } return; }
+  if (A.claim < 50) { cjDies(); if (chance(.5)) { yiAdd(30); if (alive(z)) s.known.push(z.id); logLine('成峤的营里搜出了你的信', '#ff9a8a'); } return; }
   W.kingId = cj.id; cj.role = 'ruler'; cj.disp = '秦王' + cj.name; cj.dieT = null; cj.immortal = false; cj.loc = 'xpalace'; outOfCourt(cj.id);
   if (alive(z)) { z.dieT = null; z.immortal = false; die(z, true); }
   if (A.laoIn) laoFalls();
-  endAs('E2'); logLine('政从此没了消息。成蟜坐上了王座。', '#ff9a8a');
+  endAs('E2'); logLine('政从此没了消息。成峤坐上了王座。', '#ff9a8a');
 }
 EV.tunliu = () => {
-  const cj = C('chengjiao'), z = C('zheng'), p = P(), A = W.a2; if (!a2Here() || !alive(cj) || !alive(z) || W.kingId !== 'zheng' || A.end || ageOf(cj) < 14) return null;
+  // (nobody writes to a child head: the letter's road ends in 仲父, see headOffice)
+  const cj = C('chengjiao'), z = C('zheng'), p = P(), A = W.a2; if (!a2Here() || !alive(cj) || !alive(z) || W.kingId !== 'zheng' || A.end || ageOf(cj) < 14 || !alive(p) || ageOf(p) < 16) return null;
   return { title: '屯留', who: [cj.id, z.id],
-    text: '长安君成蟜领兵攻赵，走到屯留停了下来。一封没有署名的信送到你府上：「若王有不测，长安君愿以国事相托。」',
+    text: '长安君成峤领兵攻赵，走到屯留停了下来。一封没有署名的信送到你府上：「若王有不测，长安君愿以国事相托。」',
     opts: [opt('「回信。」', A.claim >= 50 ? '他起兵能成 · 你做仲父' : '他多半会败 · 信或被搜出', cjLetter),
       opt('「把信交给王上。」', '王上+20 · 忌惮-15 · 长安君兵败', () => { addOp(z, p, 20); yiAdd(-15); cjDies(); }),
       opt('「逼他反，再去平了他。」', withTip(chkHint(3, 12) + ' · 成：名望+15 将军归心', '仁厚'), () => { if (chk(3, 12)) { addPrest(15); generalTo(1); } else addPrest(-5); addStress(p, '仁厚'); cjDies(); }),
@@ -7069,8 +7166,11 @@ function a3Resign() {
   const A2 = W.a2; if (A2 && A2.xiang === 'you') A2.xiang = null; if (A2 && A2.zhongfu === 'you') A2.zhongfu = null;
   if (W.rank >= 3 && W.rank <= 4) { W.rank = 2; PORT.clear(); MINI.clear(); }
 }
-function a3Exile() {
-  a3Resign(); goCity('henan'); W.a3.henan = true; W.a3.exileBy = W.player;
+// sent away by the king (ban): 咸阳 stays closed to the house while that king lives (not when you went of your own will)
+function a3Ban() { if (W.a3 && W.kingId && W.kingId !== W.player && alive(king())) W.a3.banBy = W.kingId; }
+function a3Banned() { return !!(W.a3 && W.a3.banBy && W.kingId === W.a3.banBy && alive(king())); }
+function a3Exile(ban) {
+  a3Resign(); goCity('henan'); W.a3.henan = true; W.a3.exileBy = W.player; if (ban === true) a3Ban();
   if (W.act === 2 && W.a2) W.a2.end = 'E4';
   logLine('狸家连夜搬去了河南', '#ff9a8a');
 }
@@ -7095,7 +7195,7 @@ EV.a3_zhuke = () => {
     opts: [opt('「上书。」', mine ? '你让李斯写 · 名望+20' : chkHint(st, 14) + ' · 成：名望+20', () => {
         if (mine || chk(st, 14)) { addPrest(20); addOp(kg, p, 5); logLine('王上读了你的上书，收回了逐客令', '#9fe89a'); } else { addPrest(-5); logLine('逐客令收回了。王上读的是李斯的那封信', '#c8e0ff'); } }),
       opt('「打点宗室。」', '鱼干-200', () => addFish(-200), () => W.fish >= 200),
-      opt('连夜走', '去河南 · 从此不在朝中', a3Exile)] };
+      opt('连夜走', '去河南 · 从此不在朝中', () => a3Exile(true))] };
 };
 EV.a3_weiliao = () => {
   const A = W.a3; if (!A || A.wl || !realmOn() || !a3Court()) return null; A.wl = 1;
@@ -7218,7 +7318,7 @@ EV.a3_junhe = () => {
   const zf = W.a2.zfBy === W.player;
   return { title: '君何功于秦', who: [kg.id], text: '王上来信：「君何功于秦？' + (W.a2.fief ? '秦封君河南，食十万户。' : '') + (zf ? '君何亲于秦？号称仲父。' : '') + '」信的末尾，让你全家迁往蜀地。',
     opts: [opt('饮鸩', '你死 · 狸家保全', () => { logLine('你喝下了那杯酒。狸家保住了', '#ff9a8a'); p.flags.cause = '饮鸩而死'; die(p); }),
-      opt('「迁蜀。」', '全家去蜀地', () => { a3Resign(); goCity('shu'); A.shu = true; logLine('狸家搬去了蜀地', '#ff9a8a'); }),
+      opt('「迁蜀。」', '全家去蜀地', () => { a3Ban(); a3Resign(); goCity('shu'); A.shu = true; logLine('狸家搬去了蜀地', '#ff9a8a'); }),
       Object.assign(opt('起兵', chkHint(3, 14) + ' · 败则身死', () => {
         if (chk(3, 14)) { if (W.a2) W.a2.yi = 40; addOp(kg, p, -20); logLine('王上收回了那封信', '#9fe89a'); } else a2Doom('起兵不成，兵败身死'); }, () => powerOf('you') >= 6), { no: () => '势不到 6，起不了兵' })] };
 };
@@ -7253,7 +7353,7 @@ EV.a3_handan = () => {
   const foes = rivalsOf(p).filter(c => cityOf(c) === 'handan' && c.house !== 'li' && c.house !== 'in' && c.id !== W.player);
   const purge = () => { for (const c of foes) { logLine(nm(c) + '从此没了消息', '#dddddd'); a3Gone(c); } };
   if (listed && alive(kg) && kg !== p) return { title: '邯郸旧怨', who: [kg.id], text: '邯郸破了。' + nm(kg) + '亲自去了一趟，要找当年欺负过他们母子的人家。名单上有狸家。',
-    opts: [opt('连夜逃走', (inQin() ? '逃去蜀地 · ' : '') + '鱼干减半 · 名望-10', () => { W.fish = Math.floor(W.fish / 2); addPrest(-10); if (inQin()) { a3Resign(); goCity('shu'); A.shu = true; } logLine('狸家连夜逃走了', '#ff9a8a'); }),
+    opts: [opt('连夜逃走', (inQin() ? '逃去蜀地 · ' : '') + '鱼干减半 · 名望-10', () => { W.fish = Math.floor(W.fish / 2); addPrest(-10); if (inQin()) { a3Ban(); a3Resign(); goCity('shu'); A.shu = true; } logLine('狸家连夜逃走了', '#ff9a8a'); }),
       opt('「去求王上。」', opinion(kg, p) >= 0 ? ta(kg) + '还念一点旧情' : '凶多吉少', () => {
         if (opinion(kg, p) >= 0) logLine(nm(kg) + '把狸家从名单上划掉了', '#9fe89a'); else { p.flags.cause = '被秦兵带走，再没回来'; die(p); } })] };
   if (!a3Court()) return { title: '邯郸破城', who: [], text: '秦军进了邯郸。秦王亲自来了一趟，城里有几户人家，从此没了消息。',
@@ -7323,7 +7423,7 @@ EV.a3_end = e => {
 // 前206: the 尾声 is over; the house goes on (the same share card)
 EV.a4_end = () => {
   const p = P(), A = W.a3; if (!a4On() || A.a4e || !alive(p)) return null; A.a4e = 1;
-  return { title: '尾声', who: [p.id], big: true, text: '秦亡了。狸家还在。' + `\n身份：${RANKS[W.rank]} · 狸家 ${family().length} 口 · 鱼干 ${W.fish} · 名望 ${W.prest}`,
+  return { title: '尾声', who: [p.id], big: true, text: (A.ljCalm ? '天下还是秦的。狸家还在。' : '秦亡了，朝廷也没了。狸家还在。') + `\n身份：${RANKS[W.rank]} · 狸家 ${family().length} 口 · 鱼干 ${W.fish} · 名望 ${W.prest}`,
     opts: [opt('「日子接着过。」', '自由经营', () => {}), Object.assign(opt('分享战绩', '存一张战绩图', () => makeShare('尾声 · 狸家仍在')), { look: 'blue' })] };
 };
 
@@ -7400,7 +7500,8 @@ EV.a4_chen = () => {
 // 前206: the next 奇货 (a 亭长 from 沛县), as the story began
 EV.a4_liuji = () => {
   const A = W.a3, p = P(); if (!a4On() || A.lj) return null; A.lj = 1;
-  const calm = A.fusu || a4Emp();
+  // (秦 only falls on history's line, 胡亥 then 子婴: a throne that left it — 扶苏, 嫪毐's, 成峤's, yours — still stands)
+  const calm = !!(A.fusu || a4Emp() || !['huhai', 'ziying'].includes(W.kingId)); A.ljCalm = calm;
   const text = calm ? '天下还算太平。沛县有个亭长叫刘季，押送刑徒的路上把人全放了，自己躲进了芒砀山。有人说他头顶上常有云气。'
     : '子婴出城投降了。沛县的亭长刘季先进了咸阳，项羽的四十万兵还在路上。';
   const bet = () => { const l = a3Spawn('liuji', 'xtavern'); if (alive(l)) { addMemo(l, p, '押宝', 30); logLine('你押了刘季。又一件奇货', '#ffe08a'); } };
@@ -7577,20 +7678,26 @@ DECISIONS.push(
 const a3Cities = () => ['handan', 'xianyang'].concat(W.a3.henan || (W.a2 && (W.a2.fief || W.a2.end === 'E4')) ? ['henan'] : [], W.a3.shu ? ['shu'] : []).filter(k => k !== W.city);
 const A3_MOVE = { handan: '狸家的老家', xianyang: '天子脚下', henan: '封地', shu: '山高皇帝远' };
 function a3MoveTo(k) {
-  if (W.cool.move || W.kingId === W.player || !CITY[k] || k === W.city) return;
+  if (W.cool.move || W.kingId === W.player || !CITY[k] || k === W.city || (k === 'xianyang' && a3Banned())) return;
   const was = W.rank; if (inQin()) a3Resign(); if (W.rank < was) logLine('你辞了' + RANKS[was], '#dddddd');
+  // (a rank 赵 gave counts for nothing in 秦, as on the letter's road: enterQin)
+  if (k === 'xianyang' && W.flags.zhaoRank) { if (W.rank > 1) { W.rank = 1; PORT.clear(); MINI.clear(); logLine('赵国给的官，到了咸阳不算数', '#c8e0ff'); } delete W.flags.zhaoRank; }
   goCity(k); W.cool.move = 8; if (k === 'henan') W.a3.henan = true; if (k === 'shu') W.a3.shu = true;
   logLine('狸家搬到了' + CITY[k].n, '#ffe08a'); didAct('move', null, -1, true);
 }
 const a3MoveAct = () => mkAct({ id: 'move', kind: 'move', n: '迁居', ap: 0, hint: '换一座城住 · 八季一次', danger: inQin() && W.rank >= 3 && W.rank <= 4 ? '辞去' + RANKS[W.rank] : null,
   no: () => W.kingId === W.player ? '王不离咸阳' : W.cool.move ? '再等 ' + W.cool.move + ' 季' : W.queue.length ? '先把眼前的事办完' : '',
-  fn: () => pickOpt('搬去哪里？', a3Cities().map(k => ({ n: CITY[k].n, s: A3_MOVE[k], fn: () => a3MoveTo(k) }))) });
+  fn: () => pickOpt('搬去哪里？', a3Cities().map(k => k === 'xianyang' && a3Banned() ? { n: CITY[k].n, s: '王上不许你回咸阳', style: 'off', fn: () => toast('王上不许你回咸阳', '#ff9a8a') }
+    : { n: CITY[k].n, s: A3_MOVE[k], fn: () => a3MoveTo(k) })) });
 
 // ---------------------------------------------------------- hooks
-const a3Fresh = () => ({ guo: 100, uni: null, end: null, amb: null, ambLast: null, ambN: 0 });
-SYS.init.push(W => { W.a3 = a3Fresh(); TAB_OF['天'] = 'travel'; });
+// (banBy: the king who sent the house away, a3Ban · qinFell: 秦 is gone, qinFall)
+const a3Fresh = () => ({ guo: 100, uni: null, end: null, amb: null, ambLast: null, ambN: 0, banBy: null, qinFell: false });
+SYS.init.push(W => { W.a3 = a3Fresh(); TAB_OF['天'] = 'travel'; lastHook('tab', noCourtTab); });
 SYS.load.push(W => {
-  const F = a3Fresh(); if (!W.a3) W.a3 = F; else for (const k in F) if (W.a3[k] === undefined) W.a3[k] = F[k]; TAB_OF['天'] = 'travel';
+  const F = a3Fresh(); if (!W.a3) W.a3 = F; else for (const k in F) if (W.a3[k] === undefined) W.a3[k] = F[k]; TAB_OF['天'] = 'travel'; lastHook('tab', noCourtTab);
+  // (a save from before the fall was a flag: 子婴 dead and nobody on the throne is the fall)
+  const zy = W.chars.ziying; if (zy && zy.dead !== null && zy.dead !== undefined && !W.kingId) W.a3.qinFell = true;
   // (the books' dates moved: 郭开, 王贲 and 蒙武 are kept to theirs; 政, 丹 and 子婴 a season or two later)
   for (const id of ['guokai', 'wangben', 'mengwu', 'dan', 'zheng', 'ziying']) {
     const c = W.chars[id]; if (!c || c.dead !== null || !(HISTD[id] > W.t)) continue;
@@ -7623,7 +7730,7 @@ SYS.season.push(() => {
 });
 SYS.yearly.push(() => { if (realmOn() && W.t > 100) a3World(); });
 SYS.sched.push(() => {
-  const A = W.a3; if (!A || !W.flags.act1Done || !alive(P())) return;
+  const A = W.a3; if (!A || !W.flags.act1Done) return;
   const q = id => W.queue.some(x => x.ev === id);
   for (const [t, id] of A3_CAL) if (t === W.t && !q(id)) W.queue.push({ ev: id });
   // the 逐客令 comes early when 郑国's secret got out (ACT2's courtFallout sets W.a2.zhuke)
@@ -7658,7 +7765,7 @@ SYS.acts.push((c, A) => {
 });
 SYS.econ.push((inc, cost) => {
   if (!W.a3) return;
-  const n = family().filter(c => c.flags.path === 'lang' && cityOf(c) === 'xianyang' && c.loc !== 'home').length;
+  const n = alive(king()) ? family().filter(c => c.flags.path === 'lang' && cityOf(c) === 'xianyang' && c.loc !== 'home').length : 0;
   if (n) inc.push(['郎官俸禄', 10 * n]);
   // (free mode never starves a house out: the clan sends a little when the store is bare)
   if (W.act >= 3 && W.fish < 20) inc.push(['族人接济', 10]);
@@ -7818,7 +7925,10 @@ const TQ = [];
 // DRY: lay a panel out without drawing anything, to measure it first (rect / txt / hit / img do nothing).
 let TCLIP = null, DRY = false;
 // f = 1 draws in the plain body font (easier to read in long passages); default is the display font
-function txt(s, x, y, size, col, align, stroke, alpha, f) { if (DRY) return; TQ.push({ s: String(s), x, y, size: size || 8, col: col || '#ffffff', align: align || 'center', stroke: stroke === undefined ? OUT : stroke, alpha: alpha === undefined ? 1 : alpha, f: f ? 1 : 0, clip: TCLIP }); }
+// (a few old characters the pixel font lacks — 子傒, 桓齮, 魏安釐王 … — put the whole string in the body font, so a name
+// is never half one font and half the other; tw/fitT measure it the same way)
+const NOPIX = /[傒湣蟜遬鄗釐齮]/;
+function txt(s, x, y, size, col, align, stroke, alpha, f) { if (DRY) return; s = String(s); TQ.push({ s, x, y, size: size || 8, col: col || '#ffffff', align: align || 'center', stroke: stroke === undefined ? OUT : stroke, alpha: alpha === undefined ? 1 : alpha, f: f || NOPIX.test(s) ? 1 : 0, clip: TCLIP }); }
 function img(c, x, y) { if (!DRY) g.drawImage(c, x, y); }
 const BODY = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC","Source Han Sans SC",sans-serif';
 // glyph widths measured with the real font (per 100px), so wrapping matches what gets drawn
@@ -7830,7 +7940,7 @@ function chW(ch, f) {
   if (w === undefined) { MCX.font = '100px ' + (f ? BODY : FONT); w = MCX.measureText(ch).width / 100; if (fontReady) CWID.set(k, w); }
   return w;
 }
-const tw = (s, size, f) => { let w = 0; for (const ch of String(s)) w += chW(ch, f) * size; return w; };
+const tw = (s, size, f) => { s = String(s); if (!f && NOPIX.test(s)) f = 1; let w = 0; for (const ch of s) w += chW(ch, f) * size; return w; };
 // Chinese line breaking: a closing mark never starts a line (one may hang past the edge), an opening mark never ends
 // one, and a paragraph doesn't end on a one- or two-character orphan. Line counts stay what a plain wrap gives.
 const CLOSE = '，。！？、；：」）》…』”', OPEN = '（「《“『';
@@ -7874,7 +7984,7 @@ function wrapT(s, maxW, size, f) {
 }
 // cut a string to maxW with …
 function fitT(s, maxW, size, f) {
-  s = String(s); if (tw(s, size, f) <= maxW) return s;
+  s = String(s); if (!f && NOPIX.test(s)) f = 1; if (tw(s, size, f) <= maxW) return s;
   const ell = chW('…', f) * size; let out = '', w = 0;
   for (const ch of s) { const c = chW(ch, f) * size; if (w + c + ell > maxW) break; out += ch; w += c; }
   return out + '…';
@@ -7929,6 +8039,7 @@ function icons() {
 const TOASTS = [], TPEND = [];
 let TANCH = [64, 1];
 function toast(s, col) {
+  if (CATCHUP) return;
   s = String(s);
   const same = TOASTS.find(t => t.s === s); if (same) { same.life = Math.max(same.life, 1.6); return; }
   if (TPEND.some(t => t.s === s)) return;
@@ -8102,8 +8213,8 @@ function showEvent(e) {
 // where the scheme rows were last drawn, for their one-step tip (set by intrigue's rows, shown by pumpQueue)
 let TIPR = null;
 const SCH_TIP = '这里是计谋的进度。金条是你在办的，红底是别人冲着你来的。点开看。';
-// (头功 is decided at act1end, after the escape adds its credit)
-const RACE_TIP = '上两条是异人对你、对吕不韦的好感。立嗣条金色是你的功劳，紫色是吕的。出城那夜谁出金子也算功劳，第一幕结束时谁多谁记头功。';
+// (only what is on screen now: the escape gold and 头功 are told on the 围城 card, when they begin to matter)
+const RACE_TIP = '上两条：异人对你、对吕不韦的好感。下条是立嗣功劳：金是你，紫是吕。';
 function pumpQueue() {
   // story cards also wait for a conversation card (so its line and heart are seen) and for a system's hold window
   if (!W || holding()) return;
@@ -8203,7 +8314,7 @@ function actState(a) {
 }
 function runAct(a, o) {
   const go = () => { if (o && o.pre) o.pre(); a.fn(); };
-  if (a.danger) pickOpt((o && o.who ? nm(o.who) + '：' : '') + a.n + '？', [{ n: a.n + '（' + a.danger + '）', style: 'red', fn: go }]);
+  if (a.danger) pickOpt((o && o.who ? nm(o.who) + '：' : '') + a.n + '？', [{ n: a.n, s: a.danger, style: 'red', fn: go }]);
   else go();
 }
 // o: { who: the cat it is done to (confirm title), pre: run first (e.g. close the list it sits in) }
@@ -8699,7 +8810,7 @@ const logKey = () => { const L = W && W.log, e = L && L[L.length - 1]; return e 
 function openLog() {
   logSeen = logKey();
   const L = (W.log || []).slice().reverse();
-  openList('近况', L.map(e => ({ t: e.s, s: typeof e.t === 'number' ? '前' + yearOf(e.t) + '年 ' + SEASON[((e.t % 4) + 4) % 4] : '', dot: e.col ? mixHex(e.col, '#3a2418', .45) : '#c29a52', wrap: true })), { empty: '还没有什么消息' });
+  openList('近况', L.map(e => ({ t: e.s, s: typeof e.t === 'number' ? yearTxt(e.t) + ' ' + SEASON[((e.t % 4) + 4) % 4] : '', dot: e.col ? mixHex(e.col, '#3a2418', .45) : '#c29a52', wrap: true })), { empty: '还没有什么消息' });
 }
 // last season's income and costs (W.lastEcon), line by line
 function openEcon() {
@@ -8712,7 +8823,7 @@ function drawTopBar() {
   if (state === 'title') { g.globalAlpha = .55; rect(163, 2, 14, 12, PAL.ink); g.globalAlpha = 1; g.drawImage(muted ? ICON.mute : ICON.snd, 166, 4); return; }
   rect(0, 0, W_, 16, PAL.ink); rect(0, 16, W_, 1, OUT);
   if (W) {
-    txt(`前${yearOf(W.t)}年 ${SEASON[W.t % 4]}`, 4, 8.5, 7, '#f2ead4', 'left', null);
+    txt(`${yearTxt(W.t)} ${SEASON[W.t % 4]}`, 4, 8.5, 7, '#f2ead4', 'left', null);
     g.drawImage(ICON.fish, 58, 4); txt(W.fish, 75, 8.5, 7, '#ffe08a', 'left', null);
     txt('望' + W.prest, 104, 8.5, 6.5, '#c8e0ff', 'left', null);
     // the fish count opens last season's books
@@ -8753,7 +8864,7 @@ function drawCity() {
     const an = areaName(tab);
     txt(an, 5, 25, 8, '#fff6dc', 'left', OUT);
     if (siegeOn()) chip('围城', R(5 + tw(an, 8) + 4), 20, '#b0301f', () => toast('围城：收入减半，商队出不了城', '#ff9a8a'));
-    const goal = objective(); if (goal) wrapT(goal, 110, 5.5).slice(0, 2).forEach((l, i) => txt(l, 5, 36 + i * 7, 5.5, '#ffe08a', 'left', OUT));
+    const goal = objective(); if (goal) wrapGoal(goal, 110, 5.5).forEach((l, i) => txt(l, 5, 36 + i * 7, 5.5, '#ffe08a', 'left', OUT));
     const all = sceneCats(tab), here = all.slice(0, 7), more = all.length - here.length;
     const sp = Math.min(24, 160 / Math.max(1, here.length + 1 + (more ? 1 : 0)));
     const drawOne = (c, x, yb) => { g.drawImage(mini(c), R(x - 8), R(yb - 22)); hit(x - 9, yb - 23, 18, 24, () => openSheet(c.id)); };
@@ -8848,7 +8959,7 @@ function drawPeople() {
   const jw = W.job && typeof jobWho === 'function' ? jobWho(W.job) || [] : [];
   const seats = typeof courtSeats === 'function' && W.a2 && W.city === 'xianyang' && W.act >= 2 ? new Map(courtSeats().map(s => [s.c, s])) : null;
   txt(areaName('people') + ' · 人物 ' + all.length, 6, 25, 7.5, '#fff6dc', 'left', null);
-  const goal = objective(); if (goal) wrapT(goal, 86, 5.5).slice(0, 2).forEach((l, i) => txt(l, 6, 34 + i * 7, 5.5, '#ffe08a', 'left', null));
+  const goal = objective(); if (goal) wrapGoal(goal, 86, 5.5).forEach((l, i) => txt(l, 6, 34 + i * 7, 5.5, '#ffe08a', 'left', null));
   const pa = peopleActions(), bw = pa.length > 2 ? Math.floor(82 / pa.length) - 2 : 40;
   pa.forEach((a, i) => actBtn(a, 96 + i * (bw + 2), 19, bw, 22));
   paper(3, 46, 174, 223);
@@ -8874,6 +8985,8 @@ function drawPeople() {
 const TAB_OF = { 家: 'home', 市: 'market', 宫: 'court', 人: 'people', 行: 'travel' };
 function actOneGoal() {
   if (W.act !== 1 || W.flags.act1Done) return '';
+  // (the night of the escape: the gold is paid or not, and the cards that follow tell the rest)
+  if (W.flags.escapeLead) return '目标：熬过这一夜（家）';
   const yr = C('yiren'); if (!alive(yr)) return '';
   const n = nm(yr);
   if (!W.flags.metYiren) return '目标：结识秦国质子' + n + '（人）';
@@ -8881,8 +8994,10 @@ function actOneGoal() {
   // the escape at the end of the siege costs 300 in gold: save up once the siege starts or 立嗣 is done
   if ((W.heir >= 100 || W.flags.siege) && !W.flags.escapeLead) return W.fish < 300 ? '目标：备出城的金子 ' + W.fish + '/300（市）' : '目标：护住' + n + '，等到出城（人）';
   if (opinion(yr, P()) < 25) return '目标：' + n + '对你的好感到 25（人）';
-  if (W.fish < RACE.fish) return '目标：攒够 ' + RACE.fish + ' 鱼干，遣使咸阳（市）';
-  if (W.heir < 100) return '目标：遣使咸阳，功劳压过吕不韦（行）';
+  // (from 前260 the gold for the night is said too: the siege comes in 前259)
+  const gate = W.t >= 10 ? ' · 出城要备 300' : '';
+  if (W.fish < RACE.fish) return '目标：攒够 ' + RACE.fish + ' 鱼干，遣使咸阳' + gate + '（市）';
+  if (W.heir < 100) return '目标：遣使咸阳，压过吕不韦' + gate + '（行）';
   return '目标：护住' + n + '，等到出城（人）';
 }
 function freeGoal() {
@@ -8916,6 +9031,27 @@ function objective() {
   return r.tab && TABS[r.tab] && !r.s.includes('（') ? r.s + '（' + TABS[r.tab].n + '）' : r.s;
 }
 function hintTab() { const s = objective(), i = s.lastIndexOf('（'); return i >= 0 ? TAB_OF[s[i + 1]] || null : null; }
+// the goal line in two lines at most, broken at its ' · ' joints (never inside '（…）'; the tab tag stays with the last
+// piece), so no line starts or ends on the dot; when that would take more than two lines, a plain wrap
+function wrapGoal(s, maxW, size) {
+  const segs = []; let cur = '', depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '（') depth++; else if (ch === '）') depth = Math.max(0, depth - 1);
+    if (!depth && s.startsWith(' · ', i)) { segs.push(cur); cur = ''; i += 2; continue; }
+    cur += ch;
+  }
+  segs.push(cur);
+  const out = []; let line = '';
+  for (const seg of segs) {
+    const t = line ? line + ' · ' + seg : seg;
+    if (tw(t, size) <= maxW) { line = t; continue; }
+    if (line) out.push(line);
+    if (tw(seg, size) <= maxW) line = seg; else { const L = wrapT(seg, maxW, size); line = L.pop(); out.push(...L); }
+  }
+  if (line) out.push(line);
+  return out.length <= 2 ? out : wrapT(s, maxW, size).slice(0, 2);
+}
 // The title screen shows the painted key art (art/title.jpg) at full resolution behind the pixel UI
 const TITLE_IMG = new Image(); TITLE_IMG.src = 'art/title.jpg';
 function drawTitleArt() {
@@ -8932,20 +9068,21 @@ function drawTitle() {
   // the title rises out of the setting sun; the buttons sit on the dark field below
   txt('一喵天下', 90, 128, 24, '#fff2c0', 'center', PAL.jiang);
   txt('All Under Paw', 90, 148, 8, '#fff6dc', 'center', OUT);
-  const saved = load('w', null);
-  if (saved) {
+  // (read once, as a string: the title only needs to know there is a save; loadGame parses it on the tap)
+  if (TSAVE === undefined) { try { TSAVE = localStorage.getItem(SAVE + 'w'); } catch (e) { TSAVE = null; } }
+  if (TSAVE) {
     btn(40, 266, 100, 19, '继续', 'red', () => { if (loadGame()) state = 'game'; else toast('存档读不出来', '#ff9a8a'); });
     // starting over wipes the dynasty: it takes a second tap within 3 s, and the old save is kept as a backup
     const armed = T - resetT < 3;
     btn(40, 290, 100, 14, armed ? '再点一次：旧档会被覆盖' : '重新开始', armed ? 'red' : 'dark', () => {
       if (!armed) { resetT = T; return; }
-      resetT = -9; save('w_bak', saved); newGame(); state = 'game'; saveGame();
+      resetT = -9; try { localStorage.setItem(SAVE + 'w_bak', TSAVE); } catch (e) {} TSAVE = undefined; newGame(); state = 'game'; saveGame();
     });
   } else btn(40, 272, 100, 22, '开始', 'red', () => { newGame(); state = 'game'; saveGame(); });
   txt('前262年，邯郸。押宝一位落魄的秦国质子。', 90, 312, 5.5, '#b8a8b8', 'center', null, 1, 1);
   TANCH = [262, -1];
 }
-let resetT = -9;
+let resetT = -9, TSAVE;
 function drawToasts() {
   // TANCH[2..3]: a narrower band (centre x, width); a notice too long for it uses the full width
   const [y0, dir, bx, bw] = TANCH;
@@ -8976,8 +9113,25 @@ function loadGame() {
   resetScreen();
   LOOKC.clear(); PORT.clear(); MINI.clear(); SCN.clear();
   runSys('load', W);
+  histCatchUp();
   logSeen = logKey();
   return true;
+}
+// A save from before the history calendar wakes up with decades of the famous overdue: they die now, quietly, each on
+// the date the books give (so ages are right), successors included; one line says who is gone. Story cards their deaths
+// queue still come.
+function histCatchUp() {
+  const gone = [];
+  CATCHUP = true;
+  try {
+    for (let n = 0; n < 300; n++) {
+      let c = null;
+      for (const x of Object.values(W.chars)) if (x.hist && alive(x) && x.id !== W.player && x.dieT !== null && x.dieT !== undefined && x.dieT < W.t && (!c || x.dieT < c.dieT)) c = x;
+      if (!c) break;
+      die(c, true); c.dead = Math.max(c.dieT, c.born); gone.push(nm(c));
+    }
+  } finally { CATCHUP = false; }
+  if (gone.length) logLine('你不在的这些年：' + gone.slice(0, 3).join('、') + (gone.length > 3 ? '等 ' + gone.length + ' 人' : '') + '相继去世', '#c8e0ff');
 }
 // saves made before the systems pass (W.v 1)
 function migrate2() {
