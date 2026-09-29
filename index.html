@@ -778,7 +778,7 @@ function linkKids() {
 }
 function newGame() {
   LOOKC.clear(); PORT.clear(); MINI.clear();
-  MODAL.length = 0; TOASTS.length = 0; SCR.key = '';
+  resetScreen();
   W = { v: 2, t: 0, fish: 200, prest: 10, ap: 2, chars: {}, nid: 1, player: null, secrets: [], flags: {}, heir: 0, credit: { you: 0, lv: 0 }, loc: 'home',
     rank: 0, ret: [], queue: [], news: [], log: [], city: 'handan', lastEcon: null, act: 1, done: {}, cool: {} };
   makeHistory(); makeLiFamily(); makeLocals(); linkKids();
@@ -790,12 +790,14 @@ function newGame() {
 function addFish(n, quiet) { W.fish = Math.max(0, W.fish + n); if (!quiet && n) { toast('小鱼干 ' + (n > 0 ? '+' : '') + n, n > 0 ? '#ffe08a' : '#ff9a8a'); if (n > 0) SFX.coin(); } }
 function addPrest(n) { W.prest = clamp(W.prest + n, 0, 999); if (n) toast('名望 ' + (n > 0 ? '+' : '') + n, n > 0 ? '#c8e0ff' : '#ff9a8a'); }
 function addStress(c, trait) { if (c.id !== W.player || !c.tr.includes(trait)) return; c.stress = clamp(c.stress + 1, 0, 3); toast('心烦 +1（' + trait + '）', '#ffb0d0'); }
+// 心烦 in levels 0–3 (the card shows them as pips; growth replaces this when stress becomes 0–100)
+function stressLv(c) { return clamp(Math.round(c.stress || 0), 0, 3); }
 const pct = (st, dc) => clamp(.5 + (st - dc) * .07, .08, .95);
 function chk(i, dc) { return Math.random() < pct(stat(P(), i), dc); }
 const chkHint = (i, dc) => STATN[i] + ' ' + R(pct(stat(P(), i), dc) * 100) + '%';
 function addHealth(c, n) { if (c) c.health = clamp((c.health || 0) + n, 0, 100); }
 // news worth remembering goes to the 近况 log (last 40 lines) and shows as a notice (quiet: log only)
-function logLine(s, col, quiet) { W.log = W.log || []; W.log.push({ t: W.t, s }); if (W.log.length > 40) W.log.splice(0, W.log.length - 40); if (!quiet) toast(s, col || '#f2ead4'); }
+function logLine(s, col, quiet) { W.log = W.log || []; W.log.push(col ? { t: W.t, s, col } : { t: W.t, s }); if (W.log.length > 40) W.log.splice(0, W.log.length - 40); if (!quiet) toast(s, col || '#f2ead4'); }
 // energy a head of house gets each season
 const apMax = p => p ? Math.max(1, 2 + (p.tr.includes('勤快') ? 1 : 0) - (p.tr.includes('慵懒') ? 1 : 0)) : 2;
 // the bloodline: every living 狸 (succession, the tree, 讨要 …)
@@ -1181,15 +1183,15 @@ function tabActions(tab) {
         if (!spendAp(1)) return; addOp(c, p, 8 + Math.floor(stat(p, 2) / 3)); addOp(p, c, 5, true); p.stress = Math.max(0, p.stress - 1); SFX.happy(); react(c, 'company', true);
         didAct('company', c, 2, true); }) }));
     A.push(mkAct({ id: 'teach', kind: 'teach', n: '教导孩子', ap: 1, hint: '传授你的本事', no: () => pupils().length ? '' : '没有 3~15 岁的孩子',
-      fn: () => pickChar('教谁？', pupils(), c => {
-        pickOpt('教什么？', STATN.map((s, i) => ({ n: LESSON[i] + '（' + s + '）', fn: () => {
+      fn: () => pickChar('教谁？ ◆1', pupils(), c => {
+        pickOpt('教' + nm(c) + '？ ◆1', STATN.map((s, i) => ({ n: LESSON[i] + ' · 你的' + s + ' ' + stat(p, i) + (stat(p, i) >= 12 ? ' ×2' : ''), fn: () => {
           if (!spendAp(1)) return; c.edu = c.edu || [0, 0, 0, 0]; c.edu[i] += 1 + (stat(p, i) >= 12 ? 1 : 0); c.st[i] += chance(.5) ? 1 : 0; addOp(c, p, 5); react(c, 'teach', true, LESSON[i]);
           didAct('teach', c, i, true); } })));
       }) }));
     A.push(mkAct({ id: 'rest', kind: 'rest', n: '闭门休养', ap: 1, hint: '健康+15 · 心烦清零', fn: () => { if (!spendAp(1)) return; addHealth(p, 15); p.stress = 0; toast('健康 +15', '#c8e0ff'); didAct('rest', null, -1, true); } }));
     A.push(mkAct({ id: 'match', kind: 'match', n: '说媒', ap: 1, hint: '为自己或家人找亲事', no: () => singles().length ? '' : '没有未婚的成年家人',
-      fn: () => pickChar('给谁说媒？', singles(), f => {
-        pickChar('媒人带来的人选', matchCands(f), c => { if (!spendAp(1)) return; propose(f, c, 'match'); }, c => ({ txt: R(proposeChance(f, c) * 100) + '%', col: '#3a9a4a' })); }) }));
+      fn: () => pickChar('给谁说媒？ ◆1', singles(), f => {
+        pickChar('给' + nm(f) + '挑人 ◆1', matchCands(f), c => { if (!spendAp(1)) return; propose(f, c, 'match'); }, chanceInfo(c => proposeChance(f, c))); }) }));
   }
   if (tab === 'market') {
     A.push(mkAct({ id: 'trade', kind: 'trade', n: '经商', ap: 1, hint: siege ? '赚小鱼干 · 围城减半' : '赚小鱼干（政）', fn: () => { if (!spendAp(1)) return;
@@ -1312,7 +1314,7 @@ function charActions(c) {
   if (adult && !c.sp && canWed(c) && c.house !== 'li') {
     const cands = adults(kinPool()).filter(f => !f.sp && f.female !== c.female && !closeKin(f, c) && canWed(f));
     if (cands.length) A.push(mkAct({ id: 'propose', kind: 'propose', n: '提亲', ap: 1, grp: '友', hint: '为自己或家人',
-      fn: () => pickChar('让谁娶/嫁' + nm(c) + '？', cands, f => { if (!spendAp(1)) return; propose(f, c); }, f => ({ txt: R(proposeChance(f, c) * 100) + '%', col: '#3a9a4a' })) }));
+      fn: () => pickChar('让谁娶/嫁' + nm(c) + '？', cands, f => { if (!spendAp(1)) return; propose(f, c); }, chanceInfo(f => proposeChance(f, c))) }));
   }
   if (adult && c.role === 'shi' && !c.hist && !W.ret.includes(c.id) && c.house !== 'li' && c.house !== 'in' && c.sp !== W.player)
     A.push(mkAct({ id: 'hire', kind: 'hire', n: '招为门客', ap: 1, grp: '友', hint: (op >= 0 ? '愿意' : chkHint(2, 9)) + ' · 每季 6 鱼干', no: () => W.ret.length >= RET_MAX ? '门客已满 ' + RET_MAX + ' 人' : '',
@@ -1999,27 +2001,40 @@ window.addEventListener('resize', fit); fit();
 function toLogical(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * W_, y: (e.clientY - r.top) / r.height * H }; }
 const inR = (p, r) => p.x >= r[0] && p.x <= r[0] + r[2] && p.y >= r[1] && p.y <= r[1] + r[3];
 let down = null;
-const SCR = { key: '', y: 0, max: 0, x: 0, maxX: 0, minY: 0 };   // x/maxX/minY only for the 2-D family tree
+// Every scrolling layer (the 人 list, each list / tree / picker window) keeps its own scroll state, so layers never
+// reset each other. render() points SCR at the layer it is drawing, and afterwards at the top layer: only that one
+// follows a drag or the wheel.
+const newScr = () => ({ key: '', y: 0, max: 0, x: 0, maxX: 0, minY: 0 });   // x/maxX/minY only for the 2-D family tree
+const PEOPLE_SCR = newScr(), NOSCR = newScr();
+let SCR = NOSCR;
 window.addEventListener('pointerdown', e => {
   if (shareEl) return;
   e.preventDefault(); initAudio();
-  const p = toLogical(e); down = { x: p.x, y: p.y, sy: SCR.y, sx: SCR.x, moved: false };
+  const p = toLogical(e); down = { x: p.x, y: p.y, s: SCR, sy: SCR.y, sx: SCR.x, moved: false };
 }, { passive: false });
 window.addEventListener('pointermove', e => {
-  if (!down) return; const p = toLogical(e);
+  if (!down) return; const p = toLogical(e), S = down.s;
   if (Math.abs(p.y - down.y) > 5 || Math.abs(p.x - down.x) > 5) down.moved = true;
-  if (down.moved && SCR.max > 0) SCR.y = clamp(down.sy - (p.y - down.y), SCR.minY || 0, SCR.max);
-  if (down.moved && SCR.maxX > 0) SCR.x = clamp(down.sx - (p.x - down.x), 0, SCR.maxX);
+  if (down.moved && S.max > 0) S.y = clamp(down.sy - (p.y - down.y), S.minY || 0, S.max);
+  if (down.moved && S.maxX > 0) S.x = clamp(down.sx - (p.x - down.x), 0, S.maxX);
 });
 window.addEventListener('pointerup', e => { if (!down) return; const p = toLogical(e), d = down; down = null; if (!d.moved) onTap(p); });
 ['pointercancel', 'blur'].forEach(ev => window.addEventListener(ev, () => { down = null; }));
 window.addEventListener('contextmenu', e => { if (!shareEl) e.preventDefault(); });
 ['touchstart', 'touchmove', 'touchend'].forEach(ev => window.addEventListener(ev, e => { if (!shareEl && e.cancelable) e.preventDefault(); }, { passive: false }));
 ['selectstart', 'dragstart', 'gesturestart'].forEach(ev => window.addEventListener(ev, e => { if (!shareEl) e.preventDefault(); }));
-window.addEventListener('wheel', e => { if (SCR.max > 0) SCR.y = clamp(SCR.y + e.deltaY * .3, 0, SCR.max); }, { passive: true });
+window.addEventListener('wheel', e => {
+  const S = SCR;
+  if (S.max > 0) S.y = clamp(S.y + e.deltaY * .3, S.minY || 0, S.max);
+  if (S.maxX > 0 && e.deltaX) S.x = clamp(S.x + e.deltaX * .3, 0, S.maxX);
+}, { passive: true });
 
-let HITS = [];
-function hit(x, y, w, h, fn) { HITS.push({ r: [x, y, w, h], fn }); }
+let HITS = [], HCLIP = null;   // HCLIP [y0, y1]: tap areas registered inside a scrolling viewport are cut to it
+function hit(x, y, w, h, fn) {
+  if (DRY) return;
+  if (HCLIP) { const a = Math.max(y, HCLIP[0]), b = Math.min(y + h, HCLIP[1]); if (b <= a) return; y = a; h = b - a; }
+  HITS.push({ r: [x, y, w, h], fn });
+}
 function onTap(p) {
   if (p.x >= 162 && p.y <= 16) { muted = !muted; save('mute', muted); if (!muted) SFX.click(); return; }
   for (let i = HITS.length - 1; i >= 0; i--) if (inR(p, HITS[i].r)) { SFX.click(); HITS[i].fn(p); return; }
@@ -2068,8 +2083,12 @@ window.addEventListener('pagehide', () => { try { if (AC) AC.close(); } catch (e
 
 // ============================================================ drawing helpers
 const TQ = [];
+// TCLIP [x, y, w, h]: text queued while it is set is clipped to it (rows cut by a scrolling viewport).
+// DRY: lay a panel out without drawing anything, to measure it first (rect / txt / hit / img do nothing).
+let TCLIP = null, DRY = false;
 // f = 1 draws in the plain body font (easier to read in long passages); default is the display font
-function txt(s, x, y, size, col, align, stroke, alpha, f) { TQ.push({ s: String(s), x, y, size: size || 8, col: col || '#ffffff', align: align || 'center', stroke: stroke === undefined ? OUT : stroke, alpha: alpha === undefined ? 1 : alpha, f: f ? 1 : 0 }); }
+function txt(s, x, y, size, col, align, stroke, alpha, f) { if (DRY) return; TQ.push({ s: String(s), x, y, size: size || 8, col: col || '#ffffff', align: align || 'center', stroke: stroke === undefined ? OUT : stroke, alpha: alpha === undefined ? 1 : alpha, f: f ? 1 : 0, clip: TCLIP }); }
+function img(c, x, y) { if (!DRY) g.drawImage(c, x, y); }
 const BODY = '"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC","Source Han Sans SC",sans-serif';
 // glyph widths measured with the real font (per 100px), so wrapping matches what gets drawn
 const MCX = mk(1, 1).getContext('2d'), CWID = new Map();
@@ -2080,31 +2099,66 @@ function chW(ch, f) {
   if (w === undefined) { MCX.font = '100px ' + (f ? BODY : FONT); w = MCX.measureText(ch).width / 100; if (fontReady) CWID.set(k, w); }
   return w;
 }
-const tw = (s, size, f) => { let w = 0; for (const ch of s) w += chW(ch, f) * size; return w; };
+const tw = (s, size, f) => { let w = 0; for (const ch of String(s)) w += chW(ch, f) * size; return w; };
+// Chinese line breaking: a closing mark never starts a line (one may hang past the edge), an opening mark never ends
+// one, and a paragraph doesn't end on a one- or two-character orphan. Line counts stay what a plain wrap gives.
+const CLOSE = '，。！？、；：」）》…』”', OPEN = '（「《“『';
 function wrapT(s, maxW, size, f) {
-  const out = [];
+  const out = [], cw = ch => chW(ch, f) * size, wid = t => { let w = 0; for (const ch of t) w += cw(ch); return w; };
   for (const para of String(s).split('\n')) {
-    let line = '', w = 0;
+    const p0 = out.length; let line = '', w = 0;
     for (const ch of para) {
-      const cw = chW(ch, f) * size;
-      if (w + cw > maxW && line) { if ('，。！？、；：」）》…'.includes(ch)) { out.push(line + ch); line = ''; w = 0; continue; } out.push(line); line = ''; w = 0; }
-      line += ch; w += cw;
+      const c = cw(ch);
+      if (w + c > maxW && line) {
+        if (CLOSE.includes(ch) && !CLOSE.includes(line[line.length - 1])) { line += ch; w += c; continue; }
+        // a mark already hangs: carry the last real character (and its marks) down with this one
+        let k = 0;
+        if (CLOSE.includes(ch)) { k = 1; while (k < line.length - 1 && CLOSE.includes(line[line.length - k])) k++; }
+        while (line.length - k > 1 && OPEN.includes(line[line.length - k - 1])) k++;
+        out.push(line.slice(0, line.length - k)); line = line.slice(line.length - k) + ch; w = wid(line);
+        continue;
+      }
+      line += ch; w += c;
     }
     if (line) out.push(line);
+    const n = out.length;
+    if (n - p0 >= 2 && [...out[n - 1]].length <= 2 && [...out[n - 2]].length >= 5) {
+      const prev = [...out[n - 2]];
+      for (let k = 1; k <= 4 && k < prev.length - 2; k++) {
+        const mv = prev.slice(-k).join(''), rem = prev.slice(0, -k);
+        if (CLOSE.includes(mv[0]) || OPEN.includes(rem[rem.length - 1])) continue;
+        if (wid(mv + out[n - 1]) <= maxW + cw('。')) { out[n - 2] = rem.join(''); out[n - 1] = mv + out[n - 1]; }
+        break;
+      }
+    }
   }
   return out;
 }
-function rect(x, y, w, h, c) { g.fillStyle = c; g.fillRect(x, y, w, h); }
+// cut a string to maxW with …
+function fitT(s, maxW, size, f) {
+  s = String(s); if (tw(s, size, f) <= maxW) return s;
+  const ell = chW('…', f) * size; let out = '', w = 0;
+  for (const ch of s) { const c = chW(ch, f) * size; if (w + c + ell > maxW) break; out += ch; w += c; }
+  return out + '…';
+}
+// the largest size ≤ max at which s fits in maxW (never below 5.5)
+const fitSize = (s, maxW, max, f) => Math.max(5.5, Math.min(max, max * maxW / Math.max(1, tw(s, max, f))));
+function rect(x, y, w, h, c) { if (DRY) return; g.fillStyle = c; g.fillRect(x, y, w, h); }
 function paper(x, y, w, h) {
   rect(x, y, w, h, OUT); rect(x + 1, y + 1, w - 2, h - 2, PAL.wood); rect(x + 2, y + 2, w - 4, h - 4, PAL.ochre); rect(x + 3, y + 3, w - 6, h - 6, OUT);
   rect(x + 4, y + 4, w - 8, h - 8, '#f1e4c3'); rect(x + 4, y + 4, w - 8, 1, '#fff6dc');
 }
-const BTN = { red: ['#7a1f24', '#b5312a', '#e0513c'], jade: ['#2c5a40', '#3f8a5e', '#6fb88a'], dark: ['#1b1622', '#3a3040', '#5a4a60'], gold: ['#7d5a2e', '#c29a52', '#f0cc5c'], off: ['#3a3438', '#6a6268', '#7a7278'] };
-function btn(x, y, w, h, label, style, fn, sub) {
+const BTN = { red: ['#7a1f24', '#b5312a', '#e0513c'], jade: ['#2c5a40', '#2f7a50', '#6fb88a'], dark: ['#1b1622', '#3a3040', '#5a4a60'], gold: ['#7d5a2e', '#c29a52', '#f0cc5c'], off: ['#3a3438', '#6a6268', '#7a7278'] };
+function btnFrame(x, y, w, h, style) {
   const s = BTN[style || 'red'];
   rect(x, y, w, h, OUT); rect(x + 1, y + 1, w - 2, h - 2, s[0]); rect(x + 1, y + 1, w - 2, h - 3, s[1]); rect(x + 2, y + 2, w - 4, 1, s[2]);
-  if (sub) { txt(label, x + 6, y + h / 2 - 3.5, 7, '#ffffff', 'left', OUT); txt(sub, x + 6, y + h / 2 + 4.5, 5.5, style === 'off' ? '#d8d0d4' : style === 'gold' ? '#3a2418' : '#ffecc8', 'left', null, 1, 1); }
-  else txt(label, x + w / 2, y + h / 2 - .5, 7.5, '#ffffff', 'center', OUT);
+}
+const subCol = style => style === 'off' ? '#e4dce0' : style === 'gold' ? '#3a2418' : '#ffecc8';
+// a label shrinks rather than running out of its button; a long subtitle is cut with …; padR keeps room on the right
+function btn(x, y, w, h, label, style, fn, sub, padR) {
+  btnFrame(x, y, w, h, style);
+  if (sub) { txt(label, x + 6, y + h / 2 - 3.5, fitSize(label, w - 12 - (padR || 0), 7), '#ffffff', 'left', OUT); txt(fitT(sub, w - 12, 5.5, 1), x + 6, y + h / 2 + 4.5, 5.5, subCol(style), 'left', null, 1, 1); }
+  else txt(label, x + (w - (padR || 0)) / 2, y + h / 2 - .5, fitSize(label, w - 8 - (padR || 0), 7.5), '#ffffff', 'center', OUT);
   if (fn) hit(x, y, w, h, fn);
 }
 const ICON = {};
@@ -2118,6 +2172,7 @@ function icons() {
   ICON.snd = rows(['..X.X', '.XX..', 'XXX.X', '.XX..', '..X.X'], { X: '#f2ead4' });
   ICON.mute = rows(['..X..', '.XX..', 'XXX.X', '.XX..', '..X..'], { X: '#8a8288' });
   ICON.seal = rows(['XXXXX', 'X.X.X', 'XXXXX', 'X.X.X', 'XXXXX'], { X: '#e0513c' });
+  ICON.scroll = rows(['BWWWWWB', '.WLLLW.', '.WWWWW.', '.WLLW..', '.WWWWW.', '.WLLLW.', 'BWWWWWB'], { B: '#c29a52', W: '#f2ead4', L: '#8a7a6a' });
   const L = { home: ['....XX....', '..XXXXXX..', 'XXXXXXXXXX', '.WWWWWWWW.', '.WW.DD.WW.', '.WW.DD.WW.', '.WWWDDWWW.'],
     market: ['....XX....', '...XXXX...', '....WW....', '.RRR..BBB.', 'RRRRRBBBBB', '.W.W..W.W.', '.W.W..W.W.'],
     hostage: ['.G..G...G.', 'WWWWWWWWWW', 'WW.WWW.WWW', 'W.W.RR.W.W', 'WWWWRRWWWW', 'WW.WRRW.WW', 'WWWWRRWWWW'],
@@ -2131,14 +2186,22 @@ function icons() {
   ICON.tab_home = ICON.home; ICON.tab_market = ICON.market; ICON.tab_court = ICON.palace; ICON.tab_travel = ICON.gate;
   ICON.tab_people = rows(['..XX...XX.', '.XXXX.XXXX', '.XXXX.XXXX', '..XX...XX.', '.RRRR.BBBB', 'RRRRRRBBBB', 'RRRRRRBBBB'], { X: '#e8b060', R: '#b5312a', B: '#4f78a8' });
 }
-// floating notices
-const TOASTS = [];
-function toast(s, col) { TOASTS.push({ s, col: col || '#ffffff', life: 2.6 }); if (TOASTS.length > 6) TOASTS.shift(); }
+// floating notices: at most 3 on screen, the rest wait their turn (nothing is dropped). Each layer sets TANCH to a
+// band where they cover nothing you need: [y, 1] stacks down from y, [y, -1] stacks up from y.
+const TOASTS = [], TPEND = [];
+let TANCH = [64, 1];
+function toast(s, col) {
+  s = String(s);
+  const same = TOASTS.find(t => t.s === s); if (same) { same.life = Math.max(same.life, 1.6); return; }
+  if (TPEND.some(t => t.s === s)) return;
+  TPEND.push({ s, col: col || '#ffffff', life: 2.6 });
+  if (TPEND.length > 60) TPEND.shift();   // only a script firing hundreds of notices without frames gets here
+}
 
 // ============================================================ scenes (180x112, painted once per place+season)
 const SCN = new Map();
 function scene(loc) {
-  const season = W ? W.t % 4 : 0, key = loc + season;
+  const season = W ? W.t % 4 : 0, key = loc + season + (W && W.city || '');
   let c = SCN.get(key); if (c) return c;
   c = mk(180, 112); const s = c.getContext('2d');
   const F = (x, y, w, h, col) => { s.fillStyle = col; s.fillRect(x, y, w, h); };
@@ -2241,27 +2304,54 @@ const MODAL = [];
 let state = 'title', T = 0;
 const busy = () => MODAL.length > 0 || (W && W.queue.length > 0);
 function top() { return MODAL[MODAL.length - 1]; }
-function closeTop() { MODAL.pop(); SCR.key = ''; }
-function openSheet(id) { MODAL.push({ type: 'sheet', id }); SFX.page(); }
-function openFamily(focus) { MODAL.push({ type: 'family', focus: focus || null }); SCR.key = ''; }
-function pickChar(title, list, fn) { if (!list.length) { toast('没有合适的人选', '#dddddd'); return; } MODAL.push({ type: 'pick', title, list: list.map(c => c.id), fn }); }
+const drop = m => { const i = MODAL.indexOf(m); if (i >= 0) MODAL.splice(i, 1); };
+// a new or loaded game starts with no windows, notices or scroll positions left from the last one
+function resetScreen() { MODAL.length = 0; TOASTS.length = 0; TPEND.length = 0; PEOPLE_SCR.key = ''; SCR = NOSCR; }
+function closeTop() { MODAL.pop(); }
+// ro: only to look at (opened from a picker or a story card): no actions except 族谱
+function openSheet(id, ro) { MODAL.push({ type: 'sheet', id, ro: !!ro }); SFX.page(); }
+function openFamily(focus, ro) { MODAL.push({ type: 'family', focus: focus || null, ro: !!ro }); }
+// info(c) -> { txt, col } is shown where the opinion number usually is (e.g. a marriage chance); tapping a portrait
+// opens that cat's card to look at before choosing
+// (when info also gives a number v, the rows are shown best first)
+function pickChar(title, list, fn, info) {
+  if (!list.length) { toast('没有合适的人选', '#dddddd'); return; }
+  const v = c => { const r = info && info(c); return r && typeof r.v === 'number' ? r.v : 0; };
+  MODAL.push({ type: 'pick', title, list: list.map(c => c.id), show: info ? list.slice().sort((a, b) => v(b) - v(a)).map(c => c.id) : null, fn, info });
+}
+// '成 N%' for marriage pickers (pc = c => proposeChance(…)); the best chances come first
+const chanceInfo = pc => c => { const v = pc(c); return { txt: '成' + R(v * 100) + '%', v, col: v >= .6 ? '#276a32' : v >= .3 ? '#5f5236' : '#a0301f' }; };
+// opts: [{ n, fn, s (subtitle), style }]
 function pickOpt(title, opts) { MODAL.push({ type: 'opts', title, opts }); }
+// A scrolling list window. rows (an array, or a function returning one so it stays live):
+// { por: cat, icon: canvas, dot: colour, t, s, right, col, wrap, fn, act: action, close } ; opt { close, empty, sub, onClose }
+function openList(title, rows, opt) { MODAL.push({ type: 'list', title, rows, opt: opt || {} }); SFX.page(); }
+// an event-style card shown now instead of through the queue (a system's own result / decision card)
+function showCard(e) { if (e && W) showEvent(e); }
+function showEvent(e) {
+  // trait options only appear for cats who have the trait (one per label)
+  const mine = traitsOf(P()), seen = new Set();
+  e.opts = (e.opts || []).filter(o => (!o.tr || mine.includes(o.tr)) && !seen.has(o.t) && seen.add(o.t));
+  if (!e.opts.length) e.opts = [opt('好', '', () => {})];   // a card can always be closed
+  if (e.pre) e.pre(); MODAL.push({ type: 'event', e, t0: T }); SFX.page();
+}
+const RACE_TIP = '上两条是异人对你、对吕不韦的好感。立嗣条金色是你的功劳，紫色是吕的；填满时谁多谁记头功。';
 function pumpQueue() {
-  if (!W || MODAL.some(m => m.type === 'event' || m.type === 'tour')) return;
+  // story cards also wait for a conversation card, so its line and heart are seen before anything covers them
+  if (!W || MODAL.some(m => m.type === 'event' || m.type === 'tour' || m.type === 'talk')) return;
   if (!W.queue.length && !MODAL.length && !W.flags.tourDone && W.flags.elder) { W.loc = 'home'; MODAL.push({ type: 'tour', i: 0 }); return; }
+  // the 立嗣 race widget gets a one-step introduction the first time it matters
+  if (!W.queue.length && !MODAL.length && W.flags.tourDone && W.flags.metYiren && !W.flags.raceTip && W.act === 1 && !W.flags.act1Done && alive(C('yiren'))) {
+    W.flags.raceTip = true; W.loc = 'home'; MODAL.push({ type: 'tour', i: 0, steps: [[[118, 19, 59, 45], RACE_TIP.replace(/异人/g, nm(C('yiren')))]] }); return;
+  }
   while (W.queue.length) {
     const q = W.queue.shift(), b = EV[q.ev];
     const e = b ? b(q) : null;
-    if (e) {
-      // trait options only appear for cats who have the trait (one per label)
-      const mine = traitsOf(P()), seen = new Set();
-      e.opts = e.opts.filter(o => (!o.tr || mine.includes(o.tr)) && !seen.has(o.t) && seen.add(o.t));
-      if (e.pre) e.pre(); MODAL.push({ type: 'event', e, t0: T }); SFX.page(); return;
-    }
+    if (e) { showEvent(e); return; }
   }
 }
 function choose(m, o) {
-  if (o.ok && !o.ok()) { SFX.no(); return; }
+  if (o.ok && !o.ok()) { SFX.no(); toast((o.no && o.no()) || '条件不够', '#ff9a8a'); return; }
   MODAL.splice(MODAL.indexOf(m), 1);
   o.fx && o.fx();
   if (m.e.post) m.e.post();
@@ -2275,7 +2365,8 @@ function drawPortrait(c, x, y, s, frameCol) {
   rect(x, y, 32 * s, 32 * s, frameCol || (c.house === 'li' ? '#e8d4a8' : c.state === '秦' ? '#d8c8c8' : '#d4dcc4'));
   g.drawImage(portrait(c), x, y, 32 * s, 32 * s);
 }
-function opCol(v) { return v >= 40 ? '#3a9a4a' : v >= 10 ? '#6a9a3a' : v > -10 ? '#8a7a5a' : v > -40 ? '#c07030' : '#c03a2a'; }
+function opCol(v) { return v >= 40 ? '#276a32' : v >= 10 ? '#3f6a1c' : v > -10 ? '#5f5236' : v > -40 ? '#96461a' : '#a0301f'; }
+const LABC = '#7a5a3a';   // small labels and hints on the paper
 
 function drawEvent(m) {
   const e = m.e, x = 6, w = 168;
@@ -2293,15 +2384,16 @@ function drawEvent(m) {
   let cy = y + 22;
   if (who.length) {
     const gap = 38, sx = x + w / 2 - (who.length * gap - 6) / 2;
-    who.forEach((c, i) => { drawPortrait(c, sx + i * gap, cy, 1); txt(nm(c), sx + i * gap + 16, cy + 38, 5.5, '#4a3020', 'center', null); hit(sx + i * gap, cy, 32, 32, () => openSheet(c.id)); });
+    // a portrait opens that cat's card to look at; the story card waits underneath
+    who.forEach((c, i) => { drawPortrait(c, sx + i * gap, cy, 1); txt(nm(c), sx + i * gap + 16, cy + 38, 5.5, '#4a3020', 'center', null); hit(sx + i * gap, cy, 32, 32, () => openSheet(c.id, true)); });
     cy += ph;
   }
   lines.forEach((l, i) => txt(l, x + 8, cy + 5 + i * 11, 7, '#2a1a10', 'left', null, 1, 1));
   cy += lines.length * 11 + 6;
   e.opts.forEach((o, i) => {
-    const ok = !o.ok || o.ok();
-    btn(x + 6, cy, w - 12, optH[i], o.t, ok ? (o.tr ? 'gold' : 'dark') : 'off', () => choose(m, o), o.hint || null);
-    if (o.tr) { const cw = tw(o.tr, 5.5) + 6; rect(x + w - 9 - cw, cy + 3, cw, 9, traitCol(o.tr)); txt(o.tr, x + w - 9 - cw / 2, cy + 7.5, 5.5, '#ffffff', 'center', null); }
+    const ok = !o.ok || o.ok(), cw = o.tr ? tw(o.tr, 5.5) + 6 : 0;
+    btn(x + 6, cy, w - 12, optH[i], o.t, ok ? (o.tr ? 'gold' : 'dark') : 'off', () => choose(m, o), o.hint || null, cw ? cw + 4 : 0);
+    if (o.tr) { rect(x + w - 9 - cw, cy + 3, cw, 9, traitCol(o.tr)); txt(o.tr, x + w - 9 - cw / 2, cy + 7.5, 5.5, '#ffffff', 'center', null); }
     cy += optH[i] + 3;
   });
 }
@@ -2313,84 +2405,199 @@ function statRow(c, x, y) {
 }
 function chip(s, x, y, col, fn) {
   const w = tw(s, 6) + 6; rect(x, y, w, 10, OUT); rect(x + 1, y + 1, w - 2, 8, col); txt(s, x + w / 2, y + 5, 6, '#ffffff', 'center', null);
-  if (fn) hit(x, y, w, 10, fn);
+  if (fn) hit(x - 1, y - 1, w + 3, 12, fn);   // the tap area fills the chip's whole cell
   return w;
 }
+// chips in rows from x0 to xMax; past maxRows the rest hides behind a '+N' chip that calls more(rest). Returns the next row's y.
+function chipFlow(items, x0, y, xMax, lab, colOf, onTap, maxRows, more) {
+  if (!items.length) return y;
+  let x = x0, row = 1;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i], w = tw(lab(it), 6) + 6, after = items.length - i - 1, last = row >= maxRows;
+    if (x > x0 && x + w + (last && after ? tw('+' + after, 6) + 9 : 0) > xMax) {
+      if (!last) { x = x0; y += 12; row++; i--; continue; }
+      const rest = items.slice(i); chip('+' + rest.length, x, y, '#5a4a60', more ? () => more(rest) : null); return y + 12;
+    }
+    chip(lab(it), x, y, colOf(it), onTap ? () => onTap(it) : null); x += w + 3;
+  }
+  return y + 12;
+}
 function traitCol(t) { if (EDU.includes(t)) return '#3f8a5e'; if (TR[t] && TR[t].k === 'cat') return '#c06a8a'; if (!TR[t]) return '#4a78a8'; return '#8a6a3a'; }
+
+// ---------------------------------------------------------- the action renderer (tabs, character cards, group lists)
+// ◆ per point of energy top-right, the fish cost beside them, the hint underneath — or, when it can't be done, why not
+// (tapping it then says so). danger: red, and one confirm first. gold: the thing to do now. open: always tappable (menus).
+function actState(a) {
+  const can = !a.ok || a.ok(), apOk = a.open || W.ap >= (a.ap || 0);
+  return { on: !!a.open || (can && apOk), can, why: !can ? ((a.no && a.no()) || '') : !apOk ? '这季没有精力了' : '' };
+}
+function runAct(a, o) {
+  const go = () => { if (o && o.pre) o.pre(); a.fn(); };
+  if (a.danger) pickOpt((o && o.who ? nm(o.who) + '：' : '') + a.n + '？', [{ n: a.n + '（' + a.danger + '）', style: 'red', fn: go }]);
+  else go();
+}
+// o: { who: the cat it is done to (confirm title), pre: run first (e.g. close the list it sits in) }
+function actBtn(a, x, y, w, h, o) {
+  const st = actState(a), style = !st.on ? 'off' : a.look || (a.danger ? 'red' : a.gold ? 'gold' : 'jade');
+  const sub = st.can ? a.hint || a.danger : st.why || a.hint || a.danger;
+  btnFrame(x, y, w, h, style);
+  let bx = x + w - 3;
+  if (!a.open) for (let k = 0; k < (a.ap || 0); k++) { bx -= 6; img(ICON.ap, bx, y + 3); }
+  if (a.fish) { bx -= 2; txt(a.fish, bx, y + 5.5, 5.5, '#ffe08a', 'right', OUT); bx -= tw(String(a.fish), 5.5) + 16; img(ICON.fish, bx, y + 2); }
+  const ls = sub ? 7 : 7.5;
+  txt(a.n, x + 6, sub ? y + h / 2 - 3.5 : y + h / 2 - .5, fitSize(a.n, bx - x - 9, ls), '#ffffff', 'left', OUT);
+  if (sub) txt(fitT(sub, w - 12, 5.5, 1), x + 6, y + h / 2 + 4.5, 5.5, subCol(style), 'left', null, 1, 1);
+  hit(x, y, w, h, () => { if (!st.on) { SFX.no(); toast(st.why || '现在做不了', '#ff9a8a'); return; } runAct(a, o); });
+}
+
+// ---------------------------------------------------------- character card
+const ROLEN = { ruler: '国君', noble: '贵族', minister: '重臣', shi: '士', hostage: '质子', general: '将军', merchant: '商贾', commoner: '平民', dancer: '舞姬' };
+const SCN_LOCS = new Set(['home', 'market', 'hostage', 'lvfu', 'tavern', 'pingyuan', 'palace', 'gate']);
+// where a cat is, in words: the city when it's in another one, else the place in town
+function placeOf(c) {
+  if (c.loc === 'away') return LOCN.away;
+  const ct = cityOf(c);
+  if (ct && ct !== W.city && CITY[ct]) return CITY[ct].n;
+  return LOCN[c.loc] || '远方';
+}
+function pipRow(n, max, x, y, on, off) { for (let i = 0; i < max; i++) rect(x + i * 5, y, 4, 4, i < n ? on : off); }
+// Groups fold actions into one button each on a card (an action's grp: '友' | '谋' | '家'; anything else gets its own group)
+const ACTG = { 友: '交游', 谋: '计谋', 家: '家事', 更多: '更多' }, GORD = ['友', '谋', '家'];
+function grpBtn(c, k, list) {
+  return { n: (ACTG[k] || k) + ' ▾', gk: k, inner: list, open: true, look: list.some(a => actState(a).on) ? 'dark' : 'off', hint: list.map(a => a.n).join(' · '),
+    fn: () => MODAL.push({ type: 'acts', c: c.id, k, title: nm(c) + ' · ' + (ACTG[k] || k) }) };
+}
+// A card's buttons, never more than 8: primary and gold actions, one button per group (a group of one shows the
+// action itself), whatever still doesn't fit under 更多, and 族谱 last (its fn is set by the card).
+function sheetButtons(c, ro) {
+  const out = [], groups = new Map();
+  for (const a of ro ? [] : charActions(c)) { if (!a.grp || a.gold) out.push(a); else { if (!groups.has(a.grp)) groups.set(a.grp, []); groups.get(a.grp).push(a); } }
+  const ord = k => GORD.indexOf(k) + 1 || 9;
+  for (const k of [...groups.keys()].sort((a, b) => ord(a) - ord(b))) { const l = groups.get(k); out.push(l.length === 1 ? l[0] : grpBtn(c, k, l)); }
+  if (out.length > 7) { const rest = out.splice(6).flatMap(a => a.inner || [a]); out.push(grpBtn(c, '更多', rest)); }
+  out.push({ n: '族谱', ap: 0, open: true, look: 'dark', hint: c.house === 'li' ? '狸氏' : c.sur + '氏', fn: () => {} });
+  return out;
+}
 function drawSheet(m) {
-  const c = C(m.id), p = P(); if (!c) { closeTop(); return; }
+  const c = C(m.id), p = P(); if (!c) { drop(m); return; }
   HITS = [];
   g.globalAlpha = .55; rect(0, 0, W_, H, '#0a0810'); g.globalAlpha = 1;
   paper(3, 18, 174, 300);
-  btn(158, 22, 16, 14, '×', 'dark', () => closeTop());
+  btn(158, 22, 16, 14, '×', 'dark', () => drop(m));
+  const me = c.id === W.player, live = alive(c), away = live && !me && !inCity(c);
   // their portrait sits in front of where they live (质子府, 吕府, …)
   drawPortrait(c, 10, 26, 2);
-  if (LOCN[c.loc] && !['xianyang', 'daliang', 'away'].includes(c.loc)) { g.drawImage(scene(c.loc), 58, 20, 64, 64, 10, 26, 64, 64); g.drawImage(portrait(c), 10, 26, 64, 64); }
-  txt(nm(c), 80, 32, 10, '#3a2418', 'left', null);
-  const L = catLook(c);
-  const rt = relTo(c);
+  if (SCN_LOCS.has(c.loc) && !away) { g.drawImage(scene(c.loc), 58, 20, 64, 64, 10, 26, 64, 64); g.drawImage(portrait(c), 10, 26, 64, 64); }
+  // this season's energy, next to the close button
+  const nPip = m.ro ? 0 : Math.max(apMax(p), W.ap);
+  for (let k = 0; k < nPip; k++) g.drawImage(k < W.ap ? ICON.ap : ICON.apOff, 151 - (nPip - k) * 6, 27);
+  txt(nm(c), 80, 32, fitSize(nm(c), 68 - nPip * 6, 10), '#3a2418', 'left', null);
+  const L = catLook(c), rt = relTo(c);
   txt(`${ageOf(c)}岁 · ${c.female ? '女' : '男'} · ${L.coat}`, 80, 45, 6, '#5a3a20', 'left', null, 1, 1);
-  const role = c.id === W.player ? RANKS[W.rank] : ({ ruler: '国君', noble: '贵族', minister: '重臣', shi: '士', hostage: '质子', general: '将军', merchant: '商贾', commoner: '平民', dancer: '舞姬' })[c.role] || '';
-  txt(`${c.house === 'li' ? '狸氏' : c.state + '国'} · ${W.ret.includes(c.id) ? '门客' : role}${rt ? ' · 你的' + rt : ''}${c.dead !== null ? ' · 已故' : ''}`, 80, 55, 6, rt ? '#94562f' : '#6a4a30', 'left', null);
-  if (c.id !== W.player && alive(c)) {
-    const o = opinion(c, p); txt('对你 ' + (o > 0 ? '+' : '') + o + ' ›', 80, 67, 7, opCol(o), 'left', null);
-    hit(78, 61, 60, 12, () => { const why = []; opinion(c, p, why); MODAL.push({ type: 'why', c: c.id, why }); });
+  const role = me ? RANKS[W.rank] : ROLEN[c.role] || '';
+  const rl = [c.house === 'li' ? '狸氏' : c.state + '国', W.ret.includes(c.id) ? '门客' : role, rt ? '你的' + rt : '',
+    c.dead !== null ? '已故' : away ? (c.loc === 'away' ? LOCN.away : '在' + placeOf(c)) : ''].filter(Boolean).join(' · ');
+  txt(rl, 80, 55, fitSize(rl, 92, 6), rt ? '#94562f' : '#6a4a30', 'left', null);
+  if (!me && live) {
+    const o = opinion(c, p), s = '对你 ' + (o > 0 ? '+' : '') + o, ow = tw(s, 7);
+    txt(s, 80, 67, 7, opCol(o), 'left', null);
+    rect(82 + ow, 62, 9, 10, '#5a4a60'); txt('›', 86.5 + ow, 66.5, 7, '#ffffff', 'center', null);
+    hit(78, 59, 90, 16, () => { const why = [], v = opinion(c, p, why); MODAL.push({ type: 'why', c: c.id, why, v }); });
+  } else if (me) {
+    // health, and 心烦 as pips: all three lit means a breakdown is coming
+    const hp = R(c.health), sl = stressLv(c);
+    g.drawImage(ICON.heart, 80, 63); txt(hp, 90, 67, 7, hp < 40 ? '#b0301f' : '#3a2418', 'left', null);
+    txt('心烦', 112, 67, 6, '#6a4a30', 'left', null, 1, 1); pipRow(sl, 3, 126, 65, sl >= 2 ? '#c0304a' : '#d0608a', '#d8c8a8');
   }
-  else if (c.id === W.player) txt('小鱼干 ' + W.fish + ' · 名望 ' + W.prest + (p.stress ? ' · 心烦' + p.stress : ''), 80, 67, 6, '#6a4a30', 'left', null);
   statRow(c, 80, 76);
-  // traits
-  let tx = 10, ty = 96;
-  for (const t of traitsOf(c)) { const w = tw(t, 6) + 6; if (tx + w > 170) { tx = 10; ty += 12; } chip(t, tx, ty, traitCol(t)); tx += w + 3; }
-  ty += 14;
-  // what anyone can read off the fur (the clues the genetics system uses)
-  txt('相猫', 10, ty + 5, 6, '#8a6a4a', 'left', null); tx = 34;
-  for (const t of furTags(L)) { const w = tw(t, 6) + 6; if (tx + w > 172) { tx = 34; ty += 12; } chip(t, tx, ty, '#7a7068'); tx += w + 3; }
-  ty += 16;
-  // relations
-  const relLine = (label, ids) => {
-    ids = ids.filter(id => C(id)); if (!ids.length) return;
-    txt(label, 10, ty + 5, 6, '#8a6a4a', 'left', null); let rx = 34;
-    for (const id of ids) { const o = C(id), w = tw(nm(o), 6) + 6; if (rx + w > 172) { rx = 34; ty += 12; } chip(nm(o), rx, ty, alive(o) ? (o.house === 'li' ? '#94562f' : '#5a5060') : '#8a8288', () => { MODAL.pop(); openSheet(o.id); }); rx += w + 3; }
-    ty += 12;
+  const btns = sheetButtons(c, m.ro), by0 = 312 - Math.ceil(btns.length / 2) * 23;
+  btns[btns.length - 1].fn = () => { drop(m); openFamily(c.house === 'li' ? null : c.id, m.ro); };
+  const lim = by0 - 4 - (away ? 10 : 0), sysRows = [];
+  runSys('sheet', c, sysRows);
+  const again = o => { drop(m); openSheet(o.id, m.ro); };
+  // The info rows are laid out once without drawing; if they would reach the buttons they fold tighter:
+  // lv 1 = one row per relation (+N opens the rest), one secret, statuses as chips; lv 2 = traits and fur in one row too.
+  const body = lv => {
+    let ty = chipFlow(traitsOf(c), 10, 96, 170, t => t, traitCol, null, lv >= 2 ? 1 : 9, r => toast(r.join(' '), '#f2ead4')) + 2;
+    // what anyone can read off the fur (the clues the genetics system uses)
+    txt('相猫', 10, ty + 5, 6, LABC, 'left', null);
+    ty = chipFlow(furTags(L), 34, ty, 172, t => t, () => '#7a7068', null, lv >= 2 ? 1 : 9, r => toast(r.join(' '), '#f2ead4')) + 4;
+    const relLine = (label, ids) => {
+      const cs = ids.map(C).filter(Boolean); if (!cs.length) return;
+      txt(label, 10, ty + 5, 6, LABC, 'left', null);
+      ty = chipFlow(cs, 34, ty, 172, o => nm(o), o => alive(o) ? (o.house === 'li' ? '#94562f' : '#5a5060') : '#8a8288', again, lv >= 1 ? 1 : 9, () => pickChar(nm(c) + '的' + label, cs, again));
+    };
+    relLine('配偶', c.sp ? [c.sp] : []);
+    relLine('父母', [c.dad, c.mom].filter(Boolean));
+    if (c.bio && c.bio !== c.dad && W.secrets.some(s => s.kid === c.id && knows(s))) relLine('生父', [c.bio]);
+    relLine('手足', Object.values(W.chars).filter(o => o !== c && ((c.dad && o.dad === c.dad) || (c.mom && o.mom === c.mom))).sort((x, y) => x.born - y.born).map(o => o.id));
+    relLine('子女', c.kids);
+    if (me || p.lov.includes(c.id)) relLine('情猫', c.lov.filter(id => me || id === W.player));
+    const secs = secretsAbout(c).filter(s => knows(s)), nS = lv >= 1 ? 1 : 2;
+    secs.slice(0, nS).forEach((s, i) => {
+      const plus = i === nS - 1 && secs.length > nS, ls = wrapT(secretText(s), plus ? 128 : 150, 6, 1);
+      img(ICON.seal, 10, ty + 1); ls.forEach((l, j) => txt(l, 20, ty + 5 + j * 9, 6, '#a03050', 'left', null, 1, 1));
+      if (plus) chip('+' + (secs.length - nS), 152, ty, '#a03050', () => openList(nm(c) + '的秘密', secs.map(x => ({ icon: ICON.seal, t: secretText(x), wrap: true }))));
+      ty += ls.length * 9 + 3;
+    });
+    const sts = statusOf(c).filter(x => x.n !== '有孕' || c.house === 'li' || me || c.sp === W.player || c.preg.f === W.player || ageOf(c) > 0);
+    const say = st => toast(st.n + (st.d ? '：' + st.d : ''), '#f2ead4');
+    if (lv >= 1) ty = chipFlow(sts, 10, ty, 170, st => st.n, st => st.col, say, 1, r => r.forEach(say));
+    else for (const st of sts) { const w = chip(st.n, 10, ty, st.col, () => say(st)); if (st.d) txt(fitT(st.d, 154 - w, 5.5, 1), 16 + w, ty + 5, 5.5, '#6a4a30', 'left', null, 1, 1); ty += 12; }
+    // a child's schooling so far: points per subject, stars on the one leading (the trait it becomes at 16)
+    if (c.edu && ageOf(c) >= 3 && ageOf(c) < 16 && c.edu.some(v => v > 0)) {
+      const w = chip('所学', 10, ty, '#3f8a5e'), best = c.edu.indexOf(Math.max(...c.edu)), pts = c.edu[best];
+      const s = [0, 1, 2, 3].filter(i => c.edu[i] > 0).sort((a, b) => c.edu[b] - c.edu[a]).map(i => LESSON[i] + c.edu[i] + (i === best ? ' ' + '★'.repeat(pts >= 6 ? 3 : pts >= 3 ? 2 : 1) : '')).join(' · ');
+      txt(fitT(s, 154 - w, 6, 1), 16 + w, ty + 5, 6, '#3a2418', 'left', null, 1, 1); ty += 12;
+    }
+    // rows from the systems: { chip, col, text, fn }
+    for (const r of sysRows) {
+      let x = 10;
+      if (r.chip) x += chip(r.chip, 10, ty, r.col || '#5a5060', r.fn) + 4;
+      if (r.text) txt(fitT(r.text, 170 - x, 6, 1), x, ty + 5, 6, r.tcol || '#3a2418', 'left', null, 1, 1);
+      if (r.fn) hit(10, ty - 1, 160, 12, r.fn);
+      ty += 12;
+    }
+    return ty;
   };
-  relLine('配偶', c.sp ? [c.sp] : []);
-  relLine('父母', [c.dad, c.mom].filter(Boolean));
-  if (c.bio && c.bio !== c.dad && W.secrets.some(s => s.kid === c.id && knows(s))) relLine('生父', [c.bio]);
-  relLine('手足', Object.values(W.chars).filter(o => o !== c && ((c.dad && o.dad === c.dad) || (c.mom && o.mom === c.mom))).sort((x, y) => x.born - y.born).map(o => o.id));
-  relLine('子女', c.kids);
-  if (c.id === W.player || p.lov.includes(c.id)) relLine('情猫', c.lov.filter(id => c.id === W.player || id === W.player));
-  const secs = secretsAbout(c).filter(s => knows(s));
-  for (const s of secs.slice(0, 2)) { g.drawImage(ICON.seal, 10, ty + 1); const ls = wrapT(secretText(s), 150, 6, 1); ls.forEach((l, i) => txt(l, 20, ty + 5 + i * 9, 6, '#a03050', 'left', null, 1, 1)); ty += ls.length * 9 + 3; }
-  const sts = statusOf(c).filter(x => x.n !== '有孕' || c.house === 'li' || c.id === W.player || c.sp === W.player || c.preg.f === W.player || ageOf(c) > 0);
-  for (const st of sts) { const w = chip(st.n, 10, ty, st.col); txt(st.d, 16 + w, ty + 5, 5.5, '#6a4a30', 'left', null, 1, 1); ty += 12; }
-  // actions
-  const acts = charActions(c);
-  acts.push({ n: '族谱', ap: 0, hint: c.house === 'li' ? '狸氏' : c.sur + '氏', fn: () => { MODAL.pop(); openFamily(c.house === 'li' ? null : c.id); } });
-  const bw = 78, bh = 20;
-  const rowsN = Math.ceil(acts.length / 2), by0 = 312 - rowsN * (bh + 3);
-  acts.forEach((a, i) => {
-    const bx = 9 + (i & 1) * (bw + 4), by = by0 + (i >> 1) * (bh + 3), ok = (!a.ok || a.ok()) && W.ap >= (a.ap || 0);
-    const cost = (a.ap ? '精力' + a.ap : '') + (a.fish ? ' 鱼' + a.fish : '');
-    btn(bx, by, bw, bh, a.n, ok ? 'jade' : 'off', () => { if (!ok) { SFX.no(); if (W.ap < (a.ap || 0)) toast('这季没有精力了', '#ff9a8a'); return; } a.fn(); }, a.hint || cost || null);
-  });
+  DRY = true; let lv = 0, ty = body(0); while (ty > lim && lv < 2) ty = body(++lv); DRY = false;
+  const cut = ty > lim;   // even folded it doesn't fit: clip it, never draw over the buttons
+  if (cut) { g.save(); g.beginPath(); g.rect(4, 92, 172, lim - 92); g.clip(); TCLIP = [4, 92, 172, lim - 92]; HCLIP = [92, lim]; }
+  const q0 = TQ.length; body(lv);
+  if (cut) { g.restore(); TCLIP = HCLIP = null; txt('▼', 170, lim - 2, 5.5, LABC, 'center', null); }
+  m.lv = lv; m.cut = cut; m.by0 = by0; m.nBtn = btns.length; m.tyMax = TQ.slice(q0).reduce((a, t) => Math.max(a, t.y + t.size / 2), 0);
+  if (away) txt((c.loc === 'away' ? LOCN.away : '人在' + placeOf(c)) + '，见不到面', 90, by0 - 8, 6, '#6a6058', 'center', null, 1, 1);
+  btns.forEach((a, i) => actBtn(a, 9 + (i & 1) * 82, by0 + (i >> 1) * 23, 78, 20, { who: c }));
+  TANCH = [by0 - 3, -1];
 }
-function listRows(items, y0, y1, key, drawRow) {
+// rows scroll inside [y0, y1]; rows cut by the edges are drawn clipped. rowH: a number or it => number.
+// Returns how many rows are (partly) below the viewport, for a '▼ 还有N' cue outside it.
+function listRows(items, y0, y1, key, drawRow, rowH) {
   if (SCR.key !== key) { SCR.key = key; SCR.y = 0; }
   SCR.maxX = 0; SCR.minY = 0;
-  const rowH = 36, total = items.length * rowH;
-  SCR.max = Math.max(0, total - (y1 - y0));
-  g.save(); g.beginPath(); g.rect(0, y0, W_, y1 - y0); g.clip();
-  items.forEach((it, i) => { const y = y0 + i * rowH - SCR.y; if (y < y0 - 2 || y + rowH > y1 + 2) return; drawRow(it, y); });
-  g.restore();
-  if (SCR.max > 0) { const bh = (y1 - y0) * (y1 - y0) / total; rect(174, y0 + (SCR.y / SCR.max) * (y1 - y0 - bh), 2, bh, '#8a6a4a'); }
+  const hOf = typeof rowH === 'function' ? rowH : () => rowH || 36;
+  let total = 0; const tops = items.map(it => { const t = total; total += hOf(it); return t; });
+  SCR.max = Math.max(0, total - (y1 - y0)); SCR.y = clamp(SCR.y, 0, SCR.max);
+  g.save(); g.beginPath(); g.rect(0, y0, W_, y1 - y0); g.clip(); TCLIP = [0, y0, W_, y1 - y0]; HCLIP = [y0, y1];
+  let more = 0;
+  items.forEach((it, i) => {
+    const y = y0 + tops[i] - SCR.y, h = hOf(it);
+    if (y + h > y1 + 1) more++;
+    if (y + h > y0 && y < y1) drawRow(it, y, h);
+  });
+  TCLIP = HCLIP = null; g.restore();
+  if (SCR.max > 0) { const vh = y1 - y0, bh = Math.max(8, vh * vh / total); rect(174, R(y0 + (SCR.y / SCR.max) * (vh - bh)), 3, R(bh), '#6a4a30'); }
+  return more;
 }
-function charRow(c, y, y0, y1, fn, extra) {
+// info(c) -> { txt, col } replaces the opinion number on the right
+function charRow(c, y, fn, extra, info) {
   drawPortrait(c, 12, y + 2, 1);
-  txt(nm(c), 50, y + 10, 7.5, alive(c) ? '#3a2418' : '#8a8288', 'left', null);
-  txt(`${ageOf(c)}岁 ${c.female ? '女' : '男'} · ${catLook(c).coat}${c.preg && alive(c) ? ' · 有孕' : ''}${extra ? ' · ' + extra : ''}`, 50, y + 20, 5.5, '#5a3a20', 'left', null, 1, 1);
-  txt(traitsOf(c).slice(0, 4).join(' '), 50, y + 29, 5.5, '#7a5a3a', 'left', null, 1, 1);
-  if (c.id !== W.player && alive(c)) { const o = opinion(c, P()); txt((o > 0 ? '+' : '') + o, 168, y + 10, 6.5, opCol(o), 'right', null); }
-  if (y + 30 > y0 && y < y1) hit(8, Math.max(y, y0), 164, Math.min(34, y1 - Math.max(y, y0)), fn);
+  const inf = info ? info(c) : c.id !== W.player && alive(c) ? (o => ({ txt: (o > 0 ? '+' : '') + o, col: opCol(o) }))(opinion(c, P())) : null;
+  txt(fitT(nm(c), 92, 7.5), 50, y + 10, 7.5, alive(c) ? '#3a2418' : '#6a6058', 'left', null);
+  txt(fitT(`${ageOf(c)}岁 ${c.female ? '女' : '男'} · ${catLook(c).coat}${c.preg && alive(c) ? ' · 有孕' : ''}${extra ? ' · ' + extra : ''}`, 120, 5.5, 1), 50, y + 20, 5.5, '#5a3a20', 'left', null, 1, 1);
+  txt(fitT(traitsOf(c).slice(0, 4).join(' '), 120, 5.5, 1), 50, y + 29, 5.5, LABC, 'left', null, 1, 1);
+  if (inf && inf.txt) txt(inf.txt, 168, y + 10, 6.5, inf.col || '#3a2418', 'right', null);
+  hit(8, y, 164, 34, fn);
 }
 function drawFamily(m) {
   HITS = [];
@@ -2398,21 +2605,27 @@ function drawFamily(m) {
   paper(3, 18, 174, 300);
   const f = m.focus && C(m.focus), ours = !f || f.house === 'li';
   txt(ours ? '狸氏族谱' : f.sur + '氏族谱', 10, 30, 9, '#3a2418', 'left', null);
-  btn(158, 22, 16, 14, '×', 'dark', () => closeTop());
-  if (ours) btn(112, 22, 42, 14, m.list ? '分支图' : '名册', 'dark', () => { m.list = !m.list; SCR.key = ''; });
-  if (m.list && ours) { drawFamilyList(); return; }
-  drawTree(ours ? null : f);
+  btn(158, 22, 16, 14, '×', 'dark', () => drop(m));
+  if (ours) btn(122, 22, 32, 14, m.list ? '分支图' : '名册', 'dark', () => { m.list = !m.list; m.scr.key = ''; });
+  if (m.list && ours) { drawFamilyList(m); return; }
+  // zoom out for an overview (tap a cat there to zoom back in on it); 我 / 归位 re-centres the view
+  btn(ours ? 96 : 130, 22, 24, 14, m.zoom ? '细看' : '全览', 'dark', () => { m.zoom = !m.zoom; });
+  btn(ours ? 74 : 104, 22, ours ? 20 : 24, 14, ours ? '我' : '归位', 'dark', () => { m.center = null; m.scr.key = ''; });
+  TANCH = [296, -1];
+  drawTree(m, ours ? null : f);
 }
-function drawFamilyList() {
+function drawFamilyList(m) {
   SCR.maxX = 0; SCR.minY = 0;
   const liv = Object.values(W.chars).filter(c => c.house === 'li' || (c.house === 'in' && c.sp && C(c.sp) && C(c.sp).house === 'li'));
   liv.sort((a, b) => (b.id === W.player) - (a.id === W.player) || (alive(b) - alive(a)) || a.born - b.born);
   const items = liv.map(c => ({ c })).concat(W.ret.map(C).filter(alive).map(c => ({ c, ret: 1 })));
-  const y0 = 40, y1 = 312;
-  listRows(items, y0, y1, 'family', (it, y) => {
-    const c = it.c, tag = c.id === W.player ? '家主' : it.ret ? '门客' : c.dead !== null ? '已故' : c.house === 'in' ? '媳婿' : c.disc >= 40 ? '不满' : c.loc !== 'home' ? '在外' : '';
-    charRow(c, y, y0, y1, () => openSheet(c.id), tag);
+  const y0 = 40, y1 = 300;
+  const more = listRows(items, y0, y1, 'family', (it, y) => {
+    const c = it.c, fl = c.flags || {}, tag = c.id === W.player ? '家主' : it.ret ? '门客' : c.dead !== null ? '已故' : c.house === 'in' ? '媳婿' : fl.branch ? '分户' : fl.left ? '离家' : c.disc >= 40 ? '不满' : c.loc !== 'home' ? '在外' : '';
+    charRow(c, y, () => openSheet(c.id, m.ro), tag);
   });
+  if (more) txt('▼ 还有' + more + '人', 90, 307, 5.5, LABC, 'center', null, 1, 1);
+  TANCH = [y1 - 2, -1];
 }
 // CK-style branching tree of the 狸 bloodline; drag to pan in both directions.
 // Each blood member stands with their partners to the right (current spouse, or the other parent of their children);
@@ -2427,10 +2640,27 @@ function bloodOf(f) {
   }
   return Object.values(W.chars).filter(c => set.has(c.id));
 }
-function treeLayout(focus) {
+// NW / GH: node width and generation height (smaller for the zoomed-out overview).
+// fold { ids, open, all }: in a big clan only the direct line of ids (ancestors and descendants) branches out; everyone
+// else's children fold into a '+N' stub (n.fold) until opened (all: fold nothing, but keep the same order).
+function treeLayout(focus, NW, GH, fold) {
+  NW = NW || NODE_W; GH = GH || GEN_H;
   const li = focus ? bloodOf(focus) : Object.values(W.chars).filter(c => c.house === 'li');
   const mem = new Set(li.map(c => c.id));
   const isLi = id => mem.has(id);
+  const kidsIn = c => c.kids.map(C).filter(k => k && mem.has(k.id) && (k.dad === c.id || k.mom === c.id));
+  let line = null; const ancs = new Set();
+  if (fold) {
+    const all = new Set(fold.open || []);
+    for (const id of fold.ids) {
+      if (!id || !mem.has(id)) continue;
+      const up = [C(id)], down = [C(id)];
+      while (up.length) { const x = up.pop(); all.add(x.id); ancs.add(x.id); for (const q of [x.dad, x.mom]) if (q && mem.has(q) && !ancs.has(q)) up.push(C(q)); }
+      while (down.length) { const x = down.pop(); all.add(x.id); for (const k of kidsIn(x)) down.push(k); }
+    }
+    if (li.length > 20 && !fold.all) line = all;
+  }
+  const count = c => kidsIn(c).reduce((t, k) => t + 1 + count(k), 0);
   const placed = new Set(), nodes = [];
   const partnersOf = c => {
     const ids = [c.sp].concat(c.kids.map(C).filter(Boolean).map(k => k.dad === c.id ? k.mom : k.mom === c.id ? k.dad : null));
@@ -2444,36 +2674,55 @@ function treeLayout(focus) {
     const other = k => { const o = k.dad === c.id ? k.mom : k.dad, j = ps.findIndex(q => q.id === o); return j < 0 ? 0 : slot(j); };
     const kids = c.kids.map(C).filter(k => k && mem.has(k.id) && (k.dad === c.id || k.mom === c.id) && !placed.has(k.id)).sort((a, b) => other(a) - other(b) || a.born - b.born);
     const n = { c, ps, slots: ps.map((q, i) => slot(i)), kids: [] };
-    for (const k of kids) if (!placed.has(k.id)) { const kn = build(k); kn.via = other(k); n.kids.push(kn); }
-    n.unit = NODE_W * (1 + ps.length);
-    n.w = Math.max(n.unit + 10, n.kids.reduce((t, k) => t + k.w, 0));   /* +10: breathing room between sibling households */
+    if (line && !line.has(c.id) && kids.length) n.fold = count(c);
+    else for (const k of kids) if (!placed.has(k.id)) { const kn = build(k); kn.via = other(k); n.kids.push(kn); }
+    // stand your line's child in the middle of its siblings, so its parents sit right above it
+    const lk = n.kids.length > 2 && n.kids.find(kn => ancs.has(kn.c.id));
+    if (lk && n.kids.every(kn => kn.via === lk.via)) {
+      const rest = n.kids.filter(kn => kn !== lk), tot = n.kids.reduce((t, kn) => t + kn.w, 0);
+      let best = 0, bd = 1e9, left = 0;
+      for (let i = 0; i <= rest.length; i++) { const d = Math.abs(left + lk.w / 2 - tot / 2); if (d < bd) { bd = d; best = i; } if (i < rest.length) left += rest[i].w; }
+      rest.splice(best, 0, lk); n.kids = rest;
+    }
+    n.unit = NW * (1 + ps.length);
+    // breathing room between sibling households; a lone leaf needs little
+    n.w = Math.max(n.unit + R(NW * (ps.length || n.kids.length ? .24 : .1)), n.kids.reduce((t, k) => t + k.w, 0));
     return n;
   };
   const roots = li.filter(c => !isLi(c.dad) && !isLi(c.mom)).sort((a, b) => (b.female ? 0 : 1) - (a.female ? 0 : 1) || a.born - b.born);
   const trees = [];
   for (const r of roots) if (!placed.has(r.id)) trees.push(build(r));
   const place = (n, left, gen) => {
-    n.x = left + n.w / 2; n.y = gen * GEN_H;
+    n.x = left + n.w / 2; n.y = gen * GH;
     const leftN = n.slots.filter(v => v < 0).length;
-    n.mx = n.x - n.unit / 2 + NODE_W * leftN + NODE_W / 2;   // the blood member; partner i sits at mx + slot * NODE_W
+    n.mx = n.x - n.unit / 2 + NW * leftN + NW / 2;   // the blood member; partner i sits at mx + slot * NW
     nodes.push(n);
     let l = left + (n.w - n.kids.reduce((t, k) => t + k.w, 0)) / 2;
     for (const k of n.kids) { place(k, l, gen + 1); l += k.w; }
   };
   let x = 0;
   for (const t of trees) { place(t, x, 0); x += t.w + 10; }
-  return { nodes, w: x, h: nodes.reduce((m, n) => Math.max(m, n.y), 0) + GEN_H };
+  return { nodes, w: x, h: nodes.reduce((m, n) => Math.max(m, n.y), 0) + GH, NW, GH };
 }
-function drawTree(focus) {
-  const T0 = treeLayout(focus), vx = 6, vy = 40, vw = 168, vh = 262, fid = focus ? focus.id : W.player;
-  if (SCR.key !== 'tree' + fid) {
-    SCR.key = 'tree' + fid;
-    const me = T0.nodes.find(n => n.c.id === fid || n.ps.some(q => q.id === fid)) || T0.nodes[0];
-    SCR.x = me ? me.x - vw / 2 : 0; SCR.y = me ? me.y - vh / 2 + 20 : 0;
+function drawTree(m, focus) {
+  const z = !!m.zoom, PS = z ? 16 : 32, k = PS / 32, fid = focus ? focus.id : W.player, S = SCR;
+  m.open = m.open || [];
+  const T0 = treeLayout(focus, z ? 22 : NODE_W, z ? 34 : GEN_H, { ids: [fid, m.center], open: m.open, all: z }), NW = T0.NW, GH = T0.GH;
+  const vx = 6, vy = 40, vw = 168, vh = 258;
+  const at = id => { for (const n of T0.nodes) { if (n.c.id === id) return [n, n.mx]; const i = n.ps.findIndex(q => q.id === id); if (i >= 0) return [n, n.mx + NW * n.slots[i]]; } return [null, 0]; };
+  const fnode = at(fid)[0], pn = fnode && fnode.c.id === fid ? T0.nodes.find(q => q.kids.includes(fnode)) : null;
+  const key = 'tree' + fid + (z ? 'z' : '') + (m.center || '');
+  if (S.key !== key) {
+    S.key = key;
+    let [n, wx] = at(m.center || fid); if (!n) { n = T0.nodes[0]; wx = n ? n.mx : 0; }
+    let wy = n ? n.y : 0;
+    // open on you together with your parents when they fit side by side
+    if (!m.center && pn && Math.abs(pn.mx - wx) < vw - 40) { wx = (pn.mx + wx) / 2; wy = (pn.y + wy) / 2; }
+    S.x = wx + 10 - vw / 2; S.y = wy + 6 + PS / 2 - vh / 2;
   }
-  SCR.maxX = Math.max(1, T0.w - vw + 20); SCR.max = Math.max(1, T0.h - vh + 20); SCR.minY = 0;
-  SCR.x = clamp(SCR.x, 0, SCR.maxX); SCR.y = clamp(SCR.y, 0, SCR.max);
-  const ox = vx + 10 - SCR.x, oy = vy + 6 - SCR.y, LINE = '#8a6a4a';
+  S.maxX = Math.max(1, T0.w - vw + 20); S.max = Math.max(1, T0.h - vh + 20); S.minY = 0;
+  S.x = clamp(S.x, 0, S.maxX); S.y = clamp(S.y, 0, S.max);
+  const ox = vx + 10 - S.x, oy = vy + 6 - S.y, LINE = '#8a6a4a', hp = PS / 2;
   rect(vx, vy, vw, vh, '#e8dcc0');
   g.save(); g.beginPath(); g.rect(vx, vy, vw, vh); g.clip();
   // branches: from the middle of the couple down to each child
@@ -2481,63 +2730,132 @@ function drawTree(focus) {
     const y = R(oy + n.y);
     // marriage lines: double red for the current spouse, a single thin line for concubines and former partners
     n.ps.forEach((q, i) => {
-      const sl = n.slots[i], a = R(ox + n.mx + (sl > 0 ? 16 : sl * NODE_W + 16)), b = R(ox + n.mx + (sl > 0 ? sl * NODE_W - 16 : -16));
-      if (n.c.sp === q.id) { rect(a, y + 15, b - a, 1, PAL.lacq); rect(a, y + 17, b - a, 1, PAL.lacq); } else rect(a, y + 16, b - a, 1, LINE);
+      const sl = n.slots[i], a = R(ox + n.mx + (sl > 0 ? hp : sl * NW + hp)), b = R(ox + n.mx + (sl > 0 ? sl * NW - hp : -hp));
+      if (n.c.sp === q.id) { rect(a, y + hp - 1, b - a, 1, PAL.lacq); rect(a, y + hp + 1, b - a, 1, PAL.lacq); } else rect(a, y + hp, b - a, 1, LINE);
     });
     // one branch per partner, dropping from the middle of that couple
     const groups = new Map();
-    for (const k of n.kids) { if (!groups.has(k.via)) groups.set(k.via, []); groups.get(k.via).push(k); }
-    const ky = R(oy + n.y + GEN_H - 3), bar = y + 46;
+    for (const kn of n.kids) { if (!groups.has(kn.via)) groups.set(kn.via, []); groups.get(kn.via).push(kn); }
+    const ky = R(oy + n.y + GH - 3 * k), bar = y + PS + R(14 * k);
     for (const [j, ks] of groups) {
-      const px = R(ox + n.mx + j * NODE_W / 2), py = j ? y + 18 : y + 40;
+      const px = R(ox + n.mx + j * NW / 2), py = j ? y + hp + 2 : y + PS + R(8 * k);
       rect(px, py, 1, bar - py, LINE);
       const a = Math.min(px, R(ox + ks[0].mx)), b = Math.max(px, R(ox + ks[ks.length - 1].mx));
       rect(a, bar, b - a + 1, 1, LINE);
-      for (const k of ks) rect(R(ox + k.mx), bar, 1, ky - bar, LINE);
+      for (const kn of ks) rect(R(ox + kn.mx), bar, 1, ky - bar, LINE);
     }
   }
   // cats
   const drawCat = (c, cx, cy) => {
-    const x = R(cx - 16), y = R(cy), me = c.id === W.player, blood = focus ? c.sur === focus.sur : c.house === 'li';
+    const x = R(cx - hp), y = R(cy), me = c.id === W.player, blood = focus ? c.sur === focus.sur : c.house === 'li';
     if (x < vx - 40 || x > vx + vw + 8 || y < vy - 50 || y > vy + vh + 8) return;
-    drawPortrait(c, x, y, 1, me ? PAL.gold : !alive(c) ? '#b8b0a8' : blood ? '#e8d4a8' : '#d4dcc4');
-    if (me) { rect(x - 2, y - 2, 36, 1, PAL.lacq); rect(x - 2, y + 33, 36, 1, PAL.lacq); rect(x - 2, y - 2, 1, 36, PAL.lacq); rect(x + 33, y - 2, 1, 36, PAL.lacq); }
-    if (x >= vx - 4 && x + 32 <= vx + vw + 4 && y >= vy - 2 && y + 44 <= vy + vh) {
-      const label = blood ? (c.disp || c.name) : nm(c);
-      txt(label.length > 4 ? label.slice(0, 4) : label, x + 16, y + 38, 5.5, alive(c) ? '#3a2418' : '#8a8078', 'center', null, 1, 1);
-      hit(x, y, 32, 32, () => openSheet(c.id));
-    }
+    drawPortrait(c, x, y, k, me ? PAL.gold : !alive(c) ? '#b8b0a8' : blood ? '#e8d4a8' : '#d4dcc4');
+    if (me) { rect(x - 2, y - 2, PS + 4, 1, PAL.lacq); rect(x - 2, y + PS + 1, PS + 4, 1, PAL.lacq); rect(x - 2, y - 2, 1, PS + 4, PAL.lacq); rect(x + PS + 1, y - 2, 1, PS + 4, PAL.lacq); }
+    if (!z) { const label = blood ? (c.disp || c.name) : nm(c); txt(label.length > 4 ? label.slice(0, 4) : label, x + hp, y + 38, 5.5, alive(c) ? '#3a2418' : '#6a6058', 'center', null, 1, 1); }
+    const hx = Math.max(x, vx), hy = Math.max(y, vy), hw = Math.min(x + PS, vx + vw) - hx, hh = Math.min(y + PS, vy + vh) - hy;
+    if (hw > 4 && hh > 4) hit(hx, hy, hw, hh, z ? () => { m.zoom = false; m.center = c.id; } : () => openSheet(c.id, m.ro));
   };
-  for (const n of T0.nodes) { drawCat(n.c, ox + n.mx, oy + n.y); n.ps.forEach((q, i) => drawCat(q, ox + n.mx + NODE_W * n.slots[i], oy + n.y)); }
+  TCLIP = [vx, vy, vw, vh];
+  for (const n of T0.nodes) { drawCat(n.c, ox + n.mx, oy + n.y); n.ps.forEach((q, i) => drawCat(q, ox + n.mx + NW * n.slots[i], oy + n.y)); }
+  TCLIP = null;
   g.restore();
-  if (T0.nodes.length === 1 && !T0.nodes[0].ps.length) txt('史书上没有记下' + ta(T0.nodes[0].c) + '的亲族', 90, 150, 6.5, '#8a6a4a', 'center', null, 1, 1);
-  txt('拖动查看 · 点头像看详情', 90, 308, 5.5, '#8a6a4a', 'center', null, 1, 1);
+  // folded households: '+N' under the member opens their branch
+  for (const n of T0.nodes) if (n.fold) {
+    const s = '+' + n.fold, w = tw(s, 6) + 6, x = R(ox + n.mx - w / 2), y = R(oy + n.y + PS + 11);
+    if (x > vx && x + w < vx + vw && y > vy && y + 10 < vy + vh) chip(s, x, y, '#6a5a4a', () => m.open.push(n.c.id));
+  }
+  // parents off to one side: a chip at the edge of their row pans over to them
+  if (pn) {
+    const sx = ox + pn.mx, sy = clamp(R(oy + pn.y + hp - 5), vy + 2, vy + vh - 12), go = () => { S.x = clamp(pn.mx + 10 - vw / 2, 0, S.maxX); };
+    if (sx < vx + 4) chip('‹ 父母', vx + 2, sy, '#6a5a4a', go);
+    else if (sx > vx + vw - 4) chip('父母 ›', vx + vw - tw('父母 ›', 6) - 8, sy, '#6a5a4a', go);
+  }
+  if (T0.nodes.length === 1 && !T0.nodes[0].ps.length) txt('史书上没有记下' + ta(T0.nodes[0].c) + '的亲族', 90, 150, 6.5, LABC, 'center', null, 1, 1);
+  txt(z ? '拖动查看 · 点头像放大' : '拖动查看 · 点头像看详情', 90, 306, 5.5, LABC, 'center', null, 1, 1);
 }
 function drawPick(m) {
   HITS = [];
   g.globalAlpha = .55; rect(0, 0, W_, H, '#0a0810'); g.globalAlpha = 1;
-  const n = m.list.length, h = Math.min(260, 40 + n * 36 + 24), y = R((H - h) / 2);
+  const list = (m.show || m.list).map(C).filter(Boolean), h = Math.min(262, 40 + list.length * 36 + 24), y = R((H - h) / 2), y0 = y + 22, y1 = y + h - 26;
   paper(3, y, 174, h);
-  txt(m.title, 90, y + 12, 7.5, '#3a2418', 'center', null);
-  listRows(m.list.map(C), y + 22, y + h - 26, 'pick' + m.title, (c, ry) => charRow(c, ry, y + 22, y + h - 26, () => { MODAL.splice(MODAL.indexOf(m), 1); m.fn(c); }));
-  btn(60, y + h - 22, 60, 16, '算了', 'dark', () => { MODAL.splice(MODAL.indexOf(m), 1); });
+  txt(m.title, 90, y + 12, fitSize(m.title, 156, 7.5), '#3a2418', 'center', null);
+  const more = listRows(list, y0, y1, 'pick', (c, ry) => {
+    charRow(c, ry, () => { drop(m); m.fn(c); }, null, m.info);
+    hit(12, ry + 2, 32, 32, () => openSheet(c.id, true));   // the portrait only looks; the rest of the row chooses
+  });
+  if (more) txt('▼ 还有' + more + '人', 12, y + h - 14, 5.5, LABC, 'left', null, 1, 1);
+  txt('点头像看详情', 168, y + h - 14, 5.5, LABC, 'right', null, 1, 1);
+  btn(60, y + h - 22, 60, 16, '算了', 'dark', () => drop(m));
+  TANCH = [y1 - 2, -1];
 }
 function drawWhy(m) {
   const c = C(m.c); HITS = [];
+  if (!c) { drop(m); return; }
   g.globalAlpha = .45; rect(0, 0, W_, H, '#0a0810'); g.globalAlpha = 1;
-  const rowsN = Math.max(1, m.why.length), h = 36 + rowsN * 11 + 22, y = R((H - h) / 2);
+  const rowsN = Math.max(1, m.why.length), h = 36 + rowsN * 11 + 14 + 22, y = R((H - h) / 2);
   paper(18, y, 144, h);
   txt(nm(c) + '对你的看法', 90, y + 12, 7.5, '#3a2418', 'center', null);
-  if (!m.why.length) txt('没什么特别的看法', 90, y + 30, 6.5, '#8a6a4a', 'center', null);
-  m.why.forEach(([l, v], i) => { txt(l, 28, y + 28 + i * 11, 6.5, '#4a3020', 'left', null, 1, 1); txt((v > 0 ? '+' : '') + v, 152, y + 28 + i * 11, 6.5, opCol(v * 2), 'right', null); });
-  btn(60, y + h - 20, 60, 15, '好', 'dark', () => { MODAL.splice(MODAL.indexOf(m), 1); });
-  hit(0, 0, W_, H, () => { MODAL.splice(MODAL.indexOf(m), 1); });
+  if (!m.why.length) txt('没什么特别的看法', 90, y + 30, 6.5, LABC, 'center', null);
+  m.why.forEach(([l, v], i) => { txt(fitT(l, 100, 6.5, 1), 28, y + 28 + i * 11, 6.5, '#4a3020', 'left', null, 1, 1); txt((v > 0 ? '+' : '') + v, 152, y + 28 + i * 11, 6.5, opCol(v * 2), 'right', null); });
+  // the total as the card shows it (CK-style); the terms can add up past the ±100 cap
+  const sum = m.why.reduce((t, w) => t + w[1], 0), v = m.v === undefined ? sum : m.v, ty = y + 28 + rowsN * 11 + 3;
+  rect(28, ty - 6, 124, 1, '#c8b088');
+  txt('合计' + (sum !== v ? '（上限 ±100）' : ''), 28, ty, 6.5, '#3a2418', 'left', null, 1, 1);
+  txt((v > 0 ? '+' : '') + v, 152, ty, 7, opCol(v), 'right', null);
+  btn(60, y + h - 20, 60, 15, '好', 'dark', () => drop(m));
+  hit(0, 0, W_, H, () => drop(m));
   HITS.unshift(HITS.pop());
+  TANCH = [20, 1];
+}
+// the list window (openList)
+function drawList(m) {
+  HITS = [];
+  g.globalAlpha = .55; rect(0, 0, W_, H, '#0a0810'); g.globalAlpha = 1;
+  const o = m.opt || {}, rows = (typeof m.rows === 'function' ? m.rows() : m.rows) || [];
+  const tx = r => r.por ? 50 : r.icon ? 18 + r.icon.width : r.dot ? 21 : 12;
+  const tW = r => (r.act ? 118 : r.right ? 164 - tw(r.right, 6.5) : 168) - tx(r);
+  const hOf = r => r.h || (r.por ? 36 : r.wrap ? 8 + wrapT(r.t, tW(r), 6.5, 1).length * 9 + (r.s ? 8 : 0) : r.s ? 22 : 16);
+  const total = rows.reduce((t, r) => t + hOf(r), 0), top0 = o.sub ? 32 : 22;
+  const h = Math.min(272, top0 + Math.max(total, 24) + 28), y = R((H - h) / 2), y0 = y + top0, y1 = y + h - 26;
+  paper(3, y, 174, h);
+  txt(m.title, 90, y + 12, fitSize(m.title, 150, 7.5), '#3a2418', 'center', null);
+  if (o.sub) txt(fitT(o.sub, 156, 5.5, 1), 90, y + 22, 5.5, LABC, 'center', null, 1, 1);
+  if (!rows.length) txt(o.empty || '什么也没有', 90, y0 + 12, 6.5, LABC, 'center', null, 1, 1);
+  const more = listRows(rows, y0, y1, 'list', (r, ry, rh) => {
+    const x = tx(r);
+    if (r.fn) hit(8, ry, 164, rh, () => { if (r.close) drop(m); r.fn(); });
+    if (r.por) drawPortrait(r.por, 12, ry + 2, 1);
+    else if (r.icon) g.drawImage(r.icon, 12, R(ry + (rh - r.icon.height) / 2));
+    else if (r.dot) rect(13, R(ry + rh / 2 - 2), 4, 4, r.dot);
+    if (r.wrap) wrapT(r.t, tW(r), 6.5, 1).forEach((l, i) => txt(l, x, ry + 8 + i * 9, 6.5, '#2a1a10', 'left', null, 1, 1));
+    else txt(fitT(r.t, tW(r), 7), x, r.s ? ry + 8 : ry + rh / 2, 7, '#3a2418', 'left', null);
+    if (r.s) txt(fitT(r.s, 168 - x, 5.5, 1), x, ry + rh - 7, 5.5, '#6a4a30', 'left', null, 1, 1);
+    if (r.right) txt(r.right, 168, r.s || r.wrap ? ry + 8 : ry + rh / 2, 6.5, r.col || '#3a2418', 'right', null);
+    if (r.act) actBtn(r.act, 122, R(ry + (rh - 18) / 2), 48, 18, { pre: r.close ? () => drop(m) : null });
+    rect(10, ry + rh - 1, 160, 1, '#e0cfa8');
+  }, hOf);
+  if (more) txt('▼ 还有' + more + '项', 12, y + h - 14, 5.5, LABC, 'left', null, 1, 1);
+  btn(60, y + h - 22, 60, 16, o.close || '关闭', 'dark', () => { drop(m); if (o.onClose) o.onClose(); });
+  TANCH = [y1 - 2, -1];
+}
+// a group button's actions, as full-width rows with the same renderer
+function drawActs(m) {
+  const c = C(m.c); HITS = [];
+  const b = c && alive(c) ? sheetButtons(c, false).find(x => x.gk === m.k) : null, list = b ? b.inner : [];
+  if (!list.length) { drop(m); return; }
+  g.globalAlpha = .55; rect(0, 0, W_, H, '#0a0810'); g.globalAlpha = 1;
+  const rh = 25, h = Math.min(262, 30 + list.length * rh + 26), y = R((H - h) / 2), y0 = y + 22, y1 = y + h - 26;
+  paper(3, y, 174, h);
+  txt(m.title, 90, y + 12, fitSize(m.title, 150, 7.5), '#3a2418', 'center', null);
+  const more = listRows(list, y0, y1, 'acts', (a, ry) => actBtn(a, 12, ry + 1, 156, 22, { who: c, pre: () => drop(m) }), rh);
+  if (more) txt('▼ 还有' + more + '项', 12, y + h - 14, 5.5, LABC, 'left', null, 1, 1);
+  btn(60, y + h - 22, 60, 16, '算了', 'dark', () => drop(m));
+  TANCH = [y1 - 2, -1];
 }
 // the little conversation card after an interaction: you on the left, them on the right with a speech bubble
 function drawTalk(m) {
   const c = C(m.c), p = P(), t = T - m.t0; HITS = [];
-  if (t > 3.2) { MODAL.splice(MODAL.indexOf(m), 1); return; }
+  if (t > 3.2 || !c) return;   // update() takes it away
   g.globalAlpha = .35; rect(0, 0, W_, H, '#0a0810'); g.globalAlpha = 1;
   const y = 186, e = Math.min(1, t * 5), bounce = R(Math.abs(Math.sin(Math.min(t, .6) * 10)) * 3 * (1 - Math.min(1, t * 1.6)));
   paper(8, y, 164, 82);
@@ -2558,7 +2876,7 @@ function drawTalk(m) {
     g.drawImage(ic, R(fx), R(fy));
   }
   g.globalAlpha = 1;
-  hit(0, 0, W_, H, () => MODAL.splice(MODAL.indexOf(m), 1));
+  hit(0, 0, W_, H, () => drop(m));
 }
 const TOUR = [
   [[0, 0, 180, 17], '年份、小鱼干和名望。一回合是一季。'],
@@ -2569,70 +2887,130 @@ const TOUR = [
   [[0, 269, 180, 24], '精力用完就结束本季。大事和意外多在季末发生。'],
   [[0, 294, 180, 26], '家、市、宫、人、行。异人和吕不韦都在「人」里。'],
 ];
+// m.steps (same shape as TOUR) shows a short tip instead of the full guide
 function drawTour(m) {
   HITS = [];
-  const [r, text] = TOUR[m.i], [x, y, w, h] = r;
+  const steps = m.steps || TOUR, [r, text] = steps[m.i], [x, y, w, h] = r, many = steps.length > 1;
   g.fillStyle = 'rgba(10,8,16,.72)';
   g.fillRect(0, 0, W_, y); g.fillRect(0, y + h, W_, H - y - h); g.fillRect(0, y, x, h); g.fillRect(x + w, y, W_ - x - w, h);
   const a = .5 + .5 * Math.abs(Math.sin(T * 3));
   g.globalAlpha = a; rect(x, y, w, 1, '#ffd24a'); rect(x, y + h - 1, w, 1, '#ffd24a'); rect(x, y, 1, h, '#ffd24a'); rect(x + w - 1, y, 1, h, '#ffd24a'); g.globalAlpha = 1;
-  const lines = wrapT(text, 144, 7, 1), bh = 22 + lines.length * 10, by = y + h + 6 + bh < H ? y + h + 6 : y - bh - 6;
+  const lines = wrapT(text, 144, 7, 1), bh = 22 + lines.length * 10 + (many ? 6 : 0), by = y + h + 6 + bh < H ? y + h + 6 : y - bh - 6;
   paper(10, by, 160, bh);
   lines.forEach((l, i) => txt(l, 18, by + 9 + i * 10, 7, '#2a1a10', 'left', null, 1, 1));
-  txt((m.i + 1) + ' / ' + TOUR.length + '  点任意处继续', 162, by + bh - 7, 5.5, '#8a6a4a', 'right', null, 1, 1);
-  hit(0, 0, W_, H, () => { m.i++; if (m.i >= TOUR.length) { MODAL.splice(MODAL.indexOf(m), 1); W.flags.tourDone = true; saveGame(); } });
+  txt((many ? (m.i + 1) + ' / ' + steps.length + '  ' : '') + '点任意处继续', 162, by + bh - 7, 5.5, LABC, 'right', null, 1, 1);
+  const end = () => { drop(m); if (!m.steps) W.flags.tourDone = true; saveGame(); };
+  hit(0, 0, W_, H, () => { m.i++; if (m.i >= steps.length) end(); });
+  if (many) btn(16, by + bh - 15, 28, 11, '跳过', 'dark', end);   // registered after the full-screen tap, so it wins
 }
 function drawOpts(m) {
   HITS = [];
   g.globalAlpha = .55; rect(0, 0, W_, H, '#0a0810'); g.globalAlpha = 1;
-  const h = 34 + m.opts.length * 21 + 22, y = R((H - h) / 2);
+  const oh = m.opts.some(o => o.s) ? 22 : 18, h = 34 + m.opts.length * (oh + 3) + 22, y = R((H - h) / 2);
   paper(10, y, 160, h);
-  txt(m.title, 90, y + 12, 7.5, '#3a2418', 'center', null);
-  m.opts.forEach((o, i) => btn(18, y + 24 + i * 21, 144, 18, o.n, 'jade', () => { MODAL.splice(MODAL.indexOf(m), 1); o.fn(); }));
-  btn(60, y + h - 20, 60, 15, '算了', 'dark', () => { MODAL.splice(MODAL.indexOf(m), 1); });
+  txt(m.title, 90, y + 12, fitSize(m.title, 140, 7.5), '#3a2418', 'center', null);
+  m.opts.forEach((o, i) => btn(18, y + 24 + i * (oh + 3), 144, oh, o.n, o.style || 'jade', () => { drop(m); o.fn(); }, o.s));
+  btn(60, y + h - 20, 60, 15, '算了', 'dark', () => drop(m));
+  TANCH = [20, 1];
 }
 
 // ============================================================ main screens
+let logSeen = '';   // the newest 近况 line when the list was last opened (not saved: after a reload it counts as read)
+const logKey = () => { const L = W && W.log, e = L && L[L.length - 1]; return e ? e.t + '|' + e.s : ''; };
+function openLog() {
+  logSeen = logKey();
+  const L = (W.log || []).slice().reverse();
+  openList('近况', L.map(e => ({ t: e.s, s: typeof e.t === 'number' ? '前' + yearOf(e.t) + '年 ' + SEASON[((e.t % 4) + 4) % 4] : '', dot: e.col ? mixHex(e.col, '#3a2418', .45) : '#c29a52', wrap: true })), { empty: '还没有什么消息' });
+}
+// last season's income and costs (W.lastEcon), line by line
+function openEcon() {
+  const E = W.lastEcon; if (!E) { toast('过完一季才有账目', '#dddddd'); return; }
+  const row = sign => ([l, n]) => ({ t: l, right: (n ? sign : '') + n, col: sign === '+' ? '#276a32' : '#a0301f' });
+  openList('上季账目', E.inc.map(row('+')).concat(E.cost.map(row('-'))), { sub: '收入 +' + E.tin + ' · 开销 -' + E.tout + ' · 小鱼干 ' + W.fish });
+}
 function drawTopBar() {
+  // on the title only the sound icon sits over the key art
+  if (state === 'title') { g.globalAlpha = .55; rect(163, 2, 14, 12, PAL.ink); g.globalAlpha = 1; g.drawImage(muted ? ICON.mute : ICON.snd, 166, 4); return; }
   rect(0, 0, W_, 16, PAL.ink); rect(0, 16, W_, 1, OUT);
   if (W) {
     txt(`前${yearOf(W.t)}年 ${SEASON[W.t % 4]}`, 4, 8.5, 7, '#f2ead4', 'left', null);
-    g.drawImage(ICON.fish, 64, 4); txt(W.fish, 81, 8.5, 7, '#ffe08a', 'left', null);
-    txt('望' + W.prest, 118, 8.5, 6.5, '#c8e0ff', 'left', null);
+    g.drawImage(ICON.fish, 58, 4); txt(W.fish, 75, 8.5, 7, '#ffe08a', 'left', null);
+    txt('望' + W.prest, 104, 8.5, 6.5, '#c8e0ff', 'left', null);
+    // the fish count opens last season's books
+    if (state === 'game' && !MODAL.length) hit(55, 0, 46, 16, openEcon);
   }
   g.drawImage(muted ? ICON.mute : ICON.snd, 166, 4);
-  if (W && state === 'game') { g.drawImage(ICON.qm, 150, 4); hit(144, 0, 18, 16, () => { if (MODAL.length || W.queue.length) return; W.loc = 'home'; MODAL.push({ type: 'tour', i: 0 }); }); }
+  if (W && state === 'game') {
+    const story = () => MODAL.some(m => m.type === 'event' || m.type === 'tour' || m.type === 'talk');
+    // 近况: the news log; a red dot while there is something new in it
+    g.drawImage(ICON.scroll, 133, 4); if (W.log && W.log.length && logKey() !== logSeen) rect(141, 3, 3, 3, '#ff6a5a');
+    hit(128, 0, 16, 16, () => { if (!story() && !MODAL.some(m => m.type === 'list' && m.title === '近况')) openLog(); });
+    g.drawImage(ICON.qm, 150, 4); hit(145, 0, 17, 16, () => { if (MODAL.length || W.queue.length) return; W.loc = 'home'; MODAL.push({ type: 'tour', i: 0 }); });
+  }
+}
+const siegeOn = () => !!(W.flags.siege && !W.flags.siegeOver);
+// the name of the place a tab shows, in the current city
+function areaName(tab) {
+  const CT = CITY[W.city] || CITY.handan;
+  return tab === 'home' ? '狸宅' : tab === 'market' ? CT.mkt : tab === 'court' ? CT.court : tab === 'travel' ? CT.gate : CT.n;
+}
+// who stands in a scene; at home the spouse first, then young kids, grown kids, retainers, the rest
+function sceneCats(tab) {
+  const p = P();
+  if (tab === 'home') {
+    const seen = new Set(), list = household().concat(W.ret.map(C)).filter(c => alive(c) && c.id !== W.player && !seen.has(c.id) && seen.add(c.id));
+    const rank = c => c.id === p.sp ? 0 : (c.mom === p.id || c.dad === p.id) ? (ageOf(c) < 16 ? 1 : 2) : W.ret.includes(c.id) ? 3 : 4;
+    return list.sort((a, b) => rank(a) - rank(b) || opinion(b, p) - opinion(a, p));
+  }
+  return tab === 'market' ? hereList('market') : tab === 'court' ? hereList('palace') : [];
 }
 function drawCity() {
   if (!TABS[W.loc]) W.loc = 'home';
   const tab = W.loc, p = P();
+  TANCH = [64, 1];   // notices go under the widget, over the backdrop
   if (tab === 'people') drawPeople(); else {
     // backdrop + the cats you can see here
     g.drawImage(scene(TABS[tab].scene), 0, 17);
-    const CT = CITY[W.city] || CITY.handan; txt({ home: '狸宅', market: CT.mkt, court: CT.court, travel: CT.gate }[tab], 5, 25, 8, '#fff6dc', 'left', OUT);
-    const goal = objective(); if (goal) txt(goal, 5, 36, 5.5, '#ffe08a', 'left', OUT);
-    let here = tab === 'home' ? household().filter(c => c.id !== W.player).concat(W.ret.map(C).filter(alive))
-      : tab === 'market' ? hereList('market') : tab === 'court' ? hereList('palace') : [];
-    here = here.slice(0, 7);
-    const sp = Math.min(24, 160 / Math.max(1, here.length + 1));
+    runSys('scene', tab);
+    const an = areaName(tab);
+    txt(an, 5, 25, 8, '#fff6dc', 'left', OUT);
+    if (siegeOn()) chip('围城', R(5 + tw(an, 8) + 4), 20, '#b0301f', () => toast('围城：收入减半，商队出不了城', '#ff9a8a'));
+    const goal = objective(); if (goal) wrapT(goal, 110, 5.5).slice(0, 2).forEach((l, i) => txt(l, 5, 36 + i * 7, 5.5, '#ffe08a', 'left', OUT));
+    const all = sceneCats(tab), here = all.slice(0, 7), more = all.length - here.length;
+    const sp = Math.min(24, 160 / Math.max(1, here.length + 1 + (more ? 1 : 0)));
     const drawOne = (c, x, yb) => { g.drawImage(mini(c), R(x - 8), R(yb - 22)); hit(x - 9, yb - 23, 18, 24, () => openSheet(c.id)); };
     drawOne(p, 18, 124);
     here.forEach((c, i) => drawOne(c, 40 + i * sp + (i & 1) * 2, 120 + (i & 1) * 4));
+    if (more) {
+      const mx = R(40 + here.length * sp + 4);
+      txt('+' + more, mx, 110, 6.5, '#fff6dc', 'center', OUT);
+      hit(mx - 8, 100, 17, 22, tab === 'home' ? () => { openFamily(); top().list = true; } : () => { W.loc = 'people'; PEOPLE_SCR.key = ''; });
+    }
     g.drawImage(ICON.ap, 15, 93 + Math.sin(T * 3) * 1.2);
-    raceWidget();
-    // player card
+    // top-right widget (118,19,59,≈45): Act 1's race first, then whichever system has something to show
+    if (!raceWidget()) for (const f of SYS.widget) if (f()) break;
+    // player card. Slots the systems draw into (SYS.card, after this): merit bar y152–153 x42–136,
+    // xp bars y166–167 (20 px under each stat), button slot B (140,151,36,14)
     rect(0, 129, W_, 191, '#2a2030'); rect(0, 129, W_, 1, OUT);
     drawPortrait(p, 5, 133, 1, '#e8d4a8'); hit(4, 132, 34, 34, () => openSheet(p.id));
     txt(nm(p), 42, 138, 8, '#fff6dc', 'left', null);
     txt(`${ageOf(p)}岁 · ${RANKS[W.rank]}`, 42, 149, 6, '#c8b8a8', 'left', null);
+    // health (red below 40) and 心烦 pips (all three lit: a breakdown is coming)
+    const hp = R(p.health), sl = stressLv(p);
+    g.drawImage(ICON.heart, 97, 144); txt(hp, 107, 149, 6, hp < 40 ? '#ff8a8a' : '#f2ead4', 'left', null);
+    pipRow(sl, 3, 124, 147, sl >= 2 ? '#ff5a7a' : '#e08aa8', '#4a3a50');
+    hit(95, 142, 45, 10, () => toast('健康 ' + hp + ' · 心烦 ' + sl + '/3', '#f2ead4'));
     for (let i = 0; i < 4; i++) { rect(42 + i * 24, 156, 9, 9, STATC[i]); txt(STATN[i], 46.5 + i * 24, 160.5, 6, '#fff', 'center', null); txt(stat(p, i), 53 + i * 24, 160.5, 6.5, '#f2ead4', 'left', null); }
     btn(140, 133, 36, 16, '家族', 'gold', () => openFamily());
-    tabActions(tab).slice(0, 4).forEach((a, i) => actBtn(a, 5, 172 + i * 24, 170, 21));
+    runSys('card', p);
+    // up to 4 actions as full rows, 5–8 in two columns
+    const acts = tabActions(tab).slice(0, 8);
+    acts.forEach((a, i) => acts.length <= 4 ? actBtn(a, 5, 172 + i * 24, 170, 21) : actBtn(a, 5 + (i & 1) * 86, 172 + (i >> 1) * 24, 84, 21));
   }
   // end of season
   rect(5, 272, 50, 18, '#1b1622');
   txt('精力', 9, 281, 6, '#c8b8a8', 'left', null);
-  for (let k = 0; k < Math.max(3, W.ap); k++) g.drawImage(k < W.ap ? ICON.ap : ICON.apOff, 29 + k * 7, 278);
+  for (let k = 0, n = Math.max(apMax(p), W.ap); k < n; k++) g.drawImage(k < W.ap ? ICON.ap : ICON.apOff, 29 + k * 6, 278);
   btn(60, 271, 115, 20, W.ap ? '结束本季 ▸' : '结束本季 ▸▸', W.ap ? 'dark' : 'red', () => endSeason());
   // five fixed tabs
   rect(0, 294, W_, 26, PAL.ink);
@@ -2643,58 +3021,78 @@ function drawCity() {
     const ic = ICON['tab_' + k]; g.drawImage(ic, R(x + 18 - ic.width / 2), 297);
     txt(TABS[k].n, x + 18, 314, 6, on ? '#ffe08a' : '#a89888', 'center', null);
     if (hl === k && !on) { g.globalAlpha = .4 + .5 * Math.abs(Math.sin(T * 3)); rect(x + 1, 295, 34, 1, '#ffd24a'); rect(x + 1, 318, 34, 1, '#ffd24a'); rect(x + 1, 295, 1, 24, '#ffd24a'); rect(x + 34, 295, 1, 24, '#ffd24a'); g.globalAlpha = 1; }
-    hit(x, 294, 36, 26, () => { W.loc = k; SCR.key = ''; });
+    hit(x, 294, 36, 26, () => { W.loc = k; PEOPLE_SCR.key = ''; });
   });
 }
-function actBtn(a, x, y, w, h) {
-  const ok = (!a.ok || a.ok()) && W.ap >= (a.ap || 0);
-  btn(x, y, w, h, a.n, ok ? 'jade' : 'off', () => { if (!ok) { SFX.no(); if (W.ap < (a.ap || 0)) toast('这季没有精力了', '#ff9a8a'); return; } a.fn(); }, a.hint);
-  if (a.ap) for (let k = 0; k < a.ap; k++) g.drawImage(ICON.ap, x + w - 12 - k * 7, y + 5);
-  if (a.fish) { g.drawImage(ICON.fish, x + w - 47, y + 12); txt(a.fish, x + w - 34, y + 14.5, 5.5, '#ffe08a', 'left', null); }
-}
 function raceWidget() {
-  if (!(W.act === 1 && W.flags.metYiren && alive(C('yiren')) && !W.flags.act1Done)) return;
+  if (!(W.act === 1 && W.flags.metYiren && alive(C('yiren')) && !W.flags.act1Done)) return false;
   const p = P(), yr = C('yiren'), a = clamp(opinion(yr, p), 0, 100), b = clamp(opinion(yr, C('lv')), 0, 100);
   rect(118, 20, 59, 34, 'rgba(22,18,26,.75)');
-  txt('异人好感', 147, 25, 5.5, '#f2ead4', 'center', null);
+  txt(nm(yr) + '好感', 147, 25, 5.5, '#f2ead4', 'center', null);
   txt('你', 122, 32, 5.5, '#ffe08a', 'left', null); rect(130, 30, 44, 4, '#3a3040'); rect(130, 30, R(a * .44), 4, '#e8b040');
   txt('吕', 122, 39, 5.5, '#d0b0ff', 'left', null); rect(130, 37, 44, 4, '#3a3040'); rect(130, 37, R(b * .44), 4, '#9a7bbd');
   // 立嗣: who has done the lobbying so far (gold = you, purple = 吕不韦), out of 100
   const cy = clamp(W.credit.you, 0, 100), cl = clamp(W.credit.lv, 0, 100 - cy);
   txt('立嗣', 122, 47, 5.5, '#c8e0ff', 'left', null); rect(136, 45, 38, 4, '#3a3040'); rect(136, 45, R(cy * .38), 4, '#e8b040'); rect(136 + R(cy * .38), 45, R(cl * .38), 4, '#9a7bbd');
   rect(118, 54, 59, 9, 'rgba(22,18,26,.75)'); txt('你 ' + W.credit.you + ' · 吕 ' + W.credit.lv, 147, 58.5, 5.5, W.credit.you >= W.credit.lv ? '#ffe08a' : '#d0b0ff', 'center', null);
+  return true;
 }
 // the 人 tab: everyone in town in one list; what you can do with them lives on their card
 function drawPeople() {
   rect(0, 17, W_, 277, '#2a2030');
   const list = townsfolk();
-  txt((CITY[W.city] || CITY.handan).n + ' · 人物 ' + list.length, 6, 26, 7.5, '#fff6dc', 'left', null);
-  const goal = objective(); if (goal) txt(goal, 6, 37, 5.5, '#ffe08a', 'left', null);
-  peopleActions().forEach((a, i) => actBtn(a, 96 + i * 42, 19, 40, 20));
-  paper(3, 43, 174, 226);
-  listRows(list, 48, 264, 'people', (c, y) => charRow(c, y, 48, 264, () => openSheet(c.id), LOCN[c.loc] + ' · ' + (GROUPN[c.role] || '')));
+  txt(areaName('people') + ' · 人物 ' + list.length, 6, 25, 7.5, '#fff6dc', 'left', null);
+  const goal = objective(); if (goal) wrapT(goal, 86, 5.5).slice(0, 2).forEach((l, i) => txt(l, 6, 34 + i * 7, 5.5, '#ffe08a', 'left', null));
+  const pa = peopleActions(), bw = pa.length > 2 ? Math.floor(82 / pa.length) - 2 : 40;
+  pa.forEach((a, i) => actBtn(a, 96 + i * (bw + 2), 19, bw, 22));
+  paper(3, 46, 174, 223);
+  const more = listRows(list, 51, 258, 'people', (c, y) => charRow(c, y, () => openSheet(c.id), (c.house === 'li' ? '狸氏 · ' : '') + (LOCN[c.loc] || '') + ' · ' + (GROUPN[c.role] || '')));
+  if (more) txt('▼ 还有' + more + '人', 90, 263, 5.5, LABC, 'center', null, 1, 1);
+  TANCH = [256, -1];
 }
-function objective() {
-  if (W.act !== 1 || W.flags.act1Done) return '目标：让狸家兴旺';
+// The goal line: Act 1's built-in goals and the systems' goals (SYS.goal -> { s, tab, pri }) compete, lowest pri wins;
+// with nothing else going on, free mode picks a concrete goal from the family's state.
+// The tab named in the last （…） is the tab that pulses, so the two never disagree.
+const TAB_OF = { 家: 'home', 市: 'market', 宫: 'court', 人: 'people', 行: 'travel' };
+function actOneGoal() {
+  if (W.act !== 1 || W.flags.act1Done) return '';
   const yr = C('yiren'); if (!alive(yr)) return '';
-  if (!W.flags.metYiren) return '目标：结识秦国质子异人（人）';
-  if (!W.flags.knowHuayang) return '目标：打听秦国后宫（人）';
+  const n = nm(yr);
+  if (!W.flags.metYiren) return '目标：结识秦国质子' + n + '（人）';
+  if (!W.flags.knowHuayang) return '目标：打听秦国后宫（人 · 打听）';
   // the escape at the end of the siege costs 300 in gold: save up once the siege starts or 立嗣 is done
-  if ((W.heir >= 100 || W.flags.siege) && !W.flags.escapeLead) return W.fish < 300 ? '目标：备出城的金子 ' + W.fish + '/300（市）' : '目标：护住异人，等到出城（人）';
-  if (opinion(yr, P()) < 25) return '目标：异人对你的好感到 25（人）';
+  if ((W.heir >= 100 || W.flags.siege) && !W.flags.escapeLead) return W.fish < 300 ? '目标：备出城的金子 ' + W.fish + '/300（市）' : '目标：护住' + n + '，等到出城（人）';
+  if (opinion(yr, P()) < 25) return '目标：' + n + '对你的好感到 25（人）';
   if (W.fish < RACE.fish) return '目标：攒够 ' + RACE.fish + ' 鱼干，遣使咸阳（市）';
   if (W.heir < 100) return '目标：遣使咸阳，功劳压过吕不韦（行）';
-  return '目标：护住异人，等到出城（人）';
+  return '目标：护住' + n + '，等到出城（人）';
 }
-function hintTab() {
-  if (W.act !== 1 || W.flags.act1Done) return null;
-  const yr = C('yiren'), p = P(); if (!alive(yr) || yr.loc !== 'hostage') return null;
-  if (!W.flags.metYiren) return 'people';
-  if (W.fish < 60) return 'market';
-  if (W.flags.knowHuayang && opinion(yr, p) >= 25 && W.fish >= 80 && W.heir < 100) return 'travel';
-  if (opinion(yr, p) < 25 || !W.flags.knowHuayang) return 'people';
-  return null;
+function freeGoal() {
+  const p = P(), fam = household().filter(c => c.house === 'li');
+  if (W.fish < 30) return '目标：经商，攒些鱼干（市）';
+  if (ageOf(p) >= 16 && !p.sp) return '目标：成家（家 · 说媒）';
+  const single = adults(fam).find(c => c.id !== W.player && !c.sp && ageOf(c) <= 40);
+  if (single) return '目标：给' + nm(single) + '说媒（家）';
+  const kid = fam.find(c => ageOf(c) >= 3 && ageOf(c) < 16);
+  if (kid) return '目标：教导' + nm(kid) + '（家）';
+  const sp = p.sp && C(p.sp);
+  if (sp && alive(sp) && opinion(sp, p) < 20) return '目标：多陪陪' + relTo(sp) + '（家）';
+  if (W.fish < 80) return '目标：攒够 80 鱼干（市）';
+  return W.prest < 20 ? '目标：拜谒权贵，攒名望（人）' : '目标：进献，提高名望（宫）';
 }
+// priorities (spec): story 10, urgent health 15, 差事 20, schemes 30, ambitions 50, free-mode hints 90
+function topGoal() {
+  const out = [], a1 = actOneGoal(), pr = r => r.pri === undefined ? 60 : r.pri;
+  if (a1) out.push({ s: a1, pri: 10 });
+  for (const f of SYS.goal) { const r = f(); if (r && r.s) out.push(r); }
+  if (!a1) out.push({ s: freeGoal(), pri: 90 });
+  return out.reduce((b, r) => pr(r) < pr(b) ? r : b);
+}
+function objective() {
+  const r = topGoal();
+  return r.tab && TABS[r.tab] && !r.s.includes('（') ? r.s + '（' + TABS[r.tab].n + '）' : r.s;
+}
+function hintTab() { const s = objective(), i = s.lastIndexOf('（'); return i >= 0 ? TAB_OF[s[i + 1]] || null : null; }
 // The title screen shows the painted key art (art/title.jpg) at full resolution behind the pixel UI
 const TITLE_IMG = new Image(); TITLE_IMG.src = 'art/title.jpg';
 function drawTitleArt() {
@@ -2713,16 +3111,24 @@ function drawTitle() {
   txt('All Under Paw', 90, 148, 8, '#fff6dc', 'center', OUT);
   const saved = load('w', null);
   if (saved) {
-    btn(40, 266, 100, 19, '继续', 'red', () => { if (loadGame()) state = 'game'; });
-    btn(40, 288, 100, 16, '重新开始', 'dark', () => { newGame(); state = 'game'; saveGame(); });
+    btn(40, 266, 100, 19, '继续', 'red', () => { if (loadGame()) state = 'game'; else toast('存档读不出来', '#ff9a8a'); });
+    // starting over wipes the dynasty: it takes a second tap within 3 s, and the old save is kept as a backup
+    const armed = T - resetT < 3;
+    btn(40, 290, 100, 14, armed ? '再点一次：旧档会被覆盖' : '重新开始', armed ? 'red' : 'dark', () => {
+      if (!armed) { resetT = T; return; }
+      resetT = -9; save('w_bak', saved); newGame(); state = 'game'; saveGame();
+    });
   } else btn(40, 272, 100, 22, '开始', 'red', () => { newGame(); state = 'game'; saveGame(); });
   txt('前262年，邯郸。押宝一位落魄的秦国质子。', 90, 312, 5.5, '#b8a8b8', 'center', null, 1, 1);
+  TANCH = [262, -1];
 }
+let resetT = -9;
 function drawToasts() {
+  const [y0, dir] = TANCH;
   TOASTS.forEach((t, i) => {
-    const a = Math.min(1, t.life * 2), w = Math.min(176, tw(t.s, 7) + 10), y = 22 + i * 12;
+    const a = Math.min(1, t.life * 2), sz = fitSize(t.s, 168, 7), w = Math.min(176, tw(t.s, sz) + 10), y = dir > 0 ? y0 + i * 12 : y0 - 11 - i * 12;
     g.globalAlpha = a * .8; rect(R(90 - w / 2), y, R(w), 11, '#16121a'); g.globalAlpha = 1;
-    txt(t.s, 90, y + 5.5, 7, t.col, 'center', null, a);
+    txt(t.s, 90, y + 5.5, sz, t.col, 'center', null, a);
   });
 }
 
@@ -2738,9 +3144,10 @@ function loadGame() {
   // saves from before the 狸-bride fix: give her the child she should be carrying (only if she can still bear one)
   { const b = W.flags.liBride && C(W.flags.liBride); if (b && alive(b) && !C('zheng') && !b.preg && b.sp === 'yiren' && ageOf(b) <= 40) b.preg = { f: 'yiren', sp: 'yiren', due: W.t + 2, id: 'zheng', name: '政', disp: '政', sex: 'M' }; }
   if ((W.v || 1) < 2) migrate2();
-  MODAL.length = 0; TOASTS.length = 0; SCR.key = '';
+  resetScreen();
   LOOKC.clear(); PORT.clear(); MINI.clear(); SCN.clear();
   runSys('load', W);
+  logSeen = logKey();
   return true;
 }
 // saves made before the systems pass (W.v 1)
@@ -2757,6 +3164,8 @@ function migrate2() {
   { const z = C('zheng'); if (z && z.female) { z.female = false; z.g.sex = 'M'; z.g.O = [z.g.O[z.g.O.length - 1]]; } }
   // 华阳夫人 has no children of her own (the whole 立嗣 story rests on it)
   { const h = C('huayang'); if (h) { h.flags.barren = true; h.preg = null; } }
+  // older saves renamed him at 立嗣; he is 异人 until he reaches 咸阳 at the end of act one
+  { const y = C('yiren'); if (y && y.disp === '子楚' && !W.flags.act1Done) y.disp = '异人'; }
   // the mother of the first generation married in, like every later spouse
   for (const c of Object.values(W.chars)) if (c.house === 'li' && c.sur !== '狸' && !c.hist && c.id !== W.player) c.house = 'in';
   if (W.t > 9 || (C('yiren') && C('yiren').sp)) W.flags.meijiDone = true;
@@ -2792,25 +3201,43 @@ function migrate2() {
 // ============================================================ loop
 function update(dt) {
   T += dt;
-  // notices wait while a story card, the guide or a conversation is on screen, so they never cover its text
+  // a conversation card leaves by itself after a while; windows from systems may animate (m.upd)
+  for (const m of MODAL.slice()) { if (m.type === 'talk' && T - m.t0 > 3.2) drop(m); else if (m.upd) m.upd(dt); }
+  // notices wait while a story card, the guide or a conversation is on screen, so they never cover its text;
+  // three at a time, and they go faster while more are waiting
   const holdToasts = MODAL.some(m => m.type === 'event' || m.type === 'tour' || m.type === 'talk');
-  if (!holdToasts) for (let i = TOASTS.length - 1; i >= 0; i--) { TOASTS[i].life -= dt * (i < TOASTS.length - 3 ? 2 : 1); if (TOASTS[i].life <= 0) TOASTS.splice(i, 1); }
-  if (state === 'game') { pumpQueue(); if (W.news.length && TOASTS.length < 3) toast(W.news.shift(), '#f2ead4'); }
+  if (!holdToasts) {
+    while (TOASTS.length < 3 && TPEND.length) TOASTS.push(TPEND.shift());
+    const sp = 1 + Math.min(2, TPEND.length * .3);
+    for (let i = TOASTS.length - 1; i >= 0; i--) { TOASTS[i].life -= dt * sp; if (TOASTS[i].life <= 0) TOASTS.splice(i, 1); }
+  }
+  if (state === 'game') { pumpQueue(); if (W.news.length && !TPEND.length && TOASTS.length < 3) toast(W.news.shift(), '#f2ead4'); }
   music(dt);
 }
+// the built-in windows; a system adds its own kinds with SYS.modal[type] = draw(m) (and m.upd(dt) if it animates)
+const DRAWM = { event: drawEvent, sheet: drawSheet, family: drawFamily, pick: drawPick, opts: drawOpts, why: drawWhy, talk: drawTalk, tour: drawTour, list: drawList, acts: drawActs };
+const SCROLLM = new Set(['family', 'pick', 'list', 'acts']);
 function render() {
-  TQ.length = 0; HITS = [];
+  TQ.length = 0; HITS = []; TCLIP = HCLIP = null; DRY = false;
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#0b1020'; ctx.fillRect(0, 0, cv.width, cv.height);
   g.imageSmoothingEnabled = false; g.globalAlpha = 1;
   if (state === 'title') drawTitleArt(); else rect(0, 0, W_, H, '#2a2030');
-  if (state === 'title') drawTitle();
+  if (state === 'title') { SCR = NOSCR; drawTitle(); }
   else {
+    SCR = PEOPLE_SCR;
     drawCity();
-    for (const m of MODAL) {
+    for (const m of MODAL.slice()) {
       layerBreak();
-      if (m.type === 'event') drawEvent(m); else if (m.type === 'sheet') drawSheet(m); else if (m.type === 'family') drawFamily(m);
-      else if (m.type === 'pick') drawPick(m); else if (m.type === 'opts') drawOpts(m); else if (m.type === 'why') drawWhy(m); else if (m.type === 'talk') drawTalk(m); else if (m.type === 'tour') drawTour(m);
+      SCR = m.scr || (m.scr = newScr());
+      const f = DRAWM[m.type];
+      if (f) f(m);
+      else if (SYS.modal[m.type]) { if (!m.pass) HITS = []; TANCH = [20, 1]; SYS.modal[m.type](m); }
+      else drop(m);   // a window nobody can draw must not block the game
     }
+    // only the top layer scrolls
+    const t = top();
+    SCR = t ? (SCROLLM.has(t.type) || t.scroll ? t.scr : NOSCR) : (W.loc === 'people' ? PEOPLE_SCR : NOSCR);
+    NOSCR.max = NOSCR.maxX = 0;
   }
   layerBreak();
   const keepHits = HITS; drawTopBar(); HITS = keepHits;
@@ -2845,7 +3272,9 @@ function present() {
   ctx.drawImage(low, 0, 0, W_, H, 0, 0, W_ * K, H * K);
   for (const t of TQ) {
     const c = textSprite(t), tw_ = c.w - 2 * c.pad;
+    if (t.clip) { ctx.save(); ctx.beginPath(); ctx.rect(t.clip[0] * K, t.clip[1] * K, t.clip[2] * K, t.clip[3] * K); ctx.clip(); }
     ctx.globalAlpha = t.alpha; ctx.drawImage(c.cv, R(t.x * K - c.pad - (t.align === 'center' ? tw_ / 2 : t.align === 'right' ? tw_ : 0)), R(t.y * K - c.h / 2));
+    if (t.clip) ctx.restore();
   }
   ctx.globalAlpha = 1;
 }
