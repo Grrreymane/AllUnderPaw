@@ -7151,7 +7151,7 @@ EV.a3_jingke = () => {
 function a3SlowStep() {
   const kg = king(), p = P(); if (!alive(kg) || kg === p) return;
   const take = powerOf('you') >= 6, n = nm(kg);
-  if (take) { W.kingId = W.player; W.rank = 5; if (W.a2) W.a2.xiang = W.a2.zhongfu = null; }
+  if (take) { W.kingId = W.player; W.rank = 5; W.patron = null; if (W.a2) W.a2.xiang = W.a2.zhongfu = null; }
   else { const f = a3Spawn('fusu', 'xpalace'); if (alive(f) && f !== kg) { W.kingId = f.id; f.role = 'ruler'; f.disp = '秦王扶苏'; } W.a3.guo = Math.max(0, W.a3.guo - 30); }
   a3Gone(kg); PORT.clear(); MINI.clear(); addStress(p, '仁厚');
   logLine(take ? n + '死在了殿上。王座上坐的是你了。' : n + '死在了殿上。扶苏即位，秦国乱了一阵。', take ? '#ffe08a' : '#ff9a8a');
