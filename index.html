@@ -3434,7 +3434,7 @@ SYS.tab.push((tab, A) => {
   if (tab === 'court') {
     A.push(adviseAct());
     const ready = promoReady(), wait = W.cool.promo;
-    A.push(mkAct({ id: 'decide', n: '大计', ap: 0, open: true, gold: ready && !wait, hint: ready ? (wait ? '求官 · 再等 ' + wait + ' 季' : '求官的条件齐了') : '求官 · 大宴 · 家谱 · 家训', fn: openDecisions }));
+    A.push(mkAct({ id: 'decide', n: '大计', ap: 0, open: true, gold: ready && !wait, hint: ready ? (wait ? '求官 · 再等 ' + wait + ' 季' : '求官的条件齐了') : W.kingId && W.kingId === W.player ? '大宴 · 家谱 · 家训' : '求官 · 大宴 · 家谱 · 家训', fn: openDecisions }));
   }
   // the envoy takes a 楚绣 along
   const lb = tab === 'travel' && hasItem('chuxiu') && A.find(a => a.id === 'lobby');
@@ -5511,7 +5511,8 @@ function newHead(was) {
   if (W.rank >= 3 && W.rank <= 4) { W.rank = 2; PORT.clear(); MINI.clear(); if (ageOf(P()) >= 16) logLine('相位不能传给后人。你是客卿。', '#c8e0ff'); }
 }
 // an old save whose head married 子楚 (the 讨要 option is gone): the house passes to the next 狸, and she goes to 秦's house
-const royalHead = () => { const p = W && P(); return alive(p) && royalOut(p); };
+// (not a head who sits on the throne herself: she is the crown, and the crown passes with the house)
+const royalHead = () => { const p = W && P(); return alive(p) && royalOut(p) && W.kingId !== W.player; };
 EV.chujia = () => {
   const old = P(); if (!royalHead()) return null;
   let L = succCands(old).map(x => x[0]);
@@ -5654,7 +5655,8 @@ function xiangScore(k) {
 const xiangIn = () => W.rank >= 2 && W.t - (W.a2.xyT || 0) >= 8;
 EV.baixiang = () => {
   const p = P(), lv = LEAD.lv.cat(), kg = king(), A = W.a2; if (!a2Here() || !alive(kg) || A.xiang) return null;
-  const ally = !!W.flags.allied, ok2 = xiangIn(), sy = xiangScore('you'), sl = lv ? xiangScore('lv') : 0, win = ok2 && (!lv || sy >= sl);
+  // (a tie goes to 吕不韦: he is the one everyone expected)
+  const ally = !!W.flags.allied, ok2 = xiangIn(), sy = xiangScore('you'), sl = lv ? xiangScore('lv') : 0, win = ok2 && (!lv || sy > sl);
   if (!lv && !ok2) { A.xiang = null; return null; }
   const text = !ok2 ? '新王在章台宫拜相，相印给了吕不韦。' + (W.rank < 2 ? '你还不是客卿，这件事轮不到你。' : '你到咸阳还不满两年，这件事轮不到你。')
     : '新王在章台宫拜相。满朝都知道只有两个人选。' + `\n你 ${sy} · 吕不韦 ${sl}\n` + (win ? '王上把相印递给了你。' : '相印给了吕不韦。');
@@ -5848,7 +5850,7 @@ function recAct() {
       logLine(nm(c) + '入朝做了官', '#9fe89a'); SFX.happy(); didAct('recommendQ', c, 2, true); }, c => { const i = bestSt(c); return { txt: STATN[i] + stat(c, i), col: STATC[i], v: stat(c, i) }; }) });
 }
 function envoyAct() {
-  return mkAct({ id: 'envoy', kind: 'envoy', n: '出使', ap: 1, hint: chkHint(2, 11) + ' · 名望+8 · ' + (zhengKing() ? '王权+3' : '王+5'),
+  return mkAct({ id: 'envoy', kind: 'envoy', n: '出使', ap: 1, hint: chkHint(2, 11) + ' · 名望+8' + (zhengKing() ? ' · 王权+3' : king() === P() ? '' : ' · 王+5'),
     no: () => minorNo() || (W.rank < 1 ? '要先当上舍人' : W.cool.envoy ? '再等 ' + W.cool.envoy + ' 季' : ''),
     fn: () => { if (!spendAp(1)) return; W.cool.envoy = 3; const ok = chk(2, 11), k = king();
       if (ok) { addPrest(8); if (zhengKing()) W.a2.wang = Math.min(100, W.a2.wang + 3); else if (alive(k) && k !== P()) addOp(k, P(), 5); toast('出使回来，事情办成了', '#9fe89a'); if (A2_ENVOY.length && chance(.2)) W.queue.push({ ev: pick(A2_ENVOY) }); }
@@ -5887,7 +5889,8 @@ function openCourt() {
   const gap = s => { const L2 = s.lean && LEAD[s.lean].cat(); return Math.max(19, L2 ? opinion(s.c, L2) + ((s.bias || {})[s.lean] || 0) : 19) + 1 - opinion(s.c, p); };
   pickChar('朝堂 · 你 势' + powerOf('you') + ' · 相邦 ' + xiangName(), L.map(s => s.c), c => openSheet(c.id), c => {
     const s = courtSeats().find(x => x.c === c), k = s && s.lean;
-    return { txt: (s && s.w > 1 ? '二席 ' : '') + (k ? (k === 'you' ? '你的人' : '倾向' + LEAD[k].n) : '中立') + ' · 你' + a2s(opinion(c, p)), col: k ? LEAD[k].ink : '#5f5236', v: !s || k === 'you' ? -999 : -gap(s) }; });
+    const head = k && k !== 'you' && LEAD[k].cat() === c;
+    return { txt: (s && s.w > 1 ? '二席 ' : '') + (head ? (k === 'wang' ? '王' : k === 'zong' ? '宗室之首' : LEAD[k].n + '系之首') : k ? (k === 'you' ? '你的人' : '倾向' + LEAD[k].n) : '中立') + ' · 你' + a2s(opinion(c, p)), col: k ? LEAD[k].ink : '#5f5236', v: !s || k === 'you' || head ? -999 : -gap(s) }; });
 }
 function courtWidget() {
   const A = W.a2; if (!A || W.act !== 2 || !W.flags.act1Done) return false;
@@ -5930,8 +5933,8 @@ EV.courtTip = () => { if (!a2Here()) return null; W.loc = 'home'; MODAL.push({ t
 function lackTxt() {
   const x = nextPromo(); if (!x) return null;
   const miss = x.need().filter(([, v, n]) => v < n); if (!miss.length) return null;
-  const s = miss.map(([l, v, n]) => l === '朝中' ? '朝中一个自己人' : ['功', '望', '势'].includes(l) ? l + (n - Math.max(0, v)) : l + '好感' + (n - v)).join(' ');
-  return { s: '还差 ' + s, tab: ['功', '望'].includes(miss[0][0]) ? '宫' : '人' };
+  const num = miss.filter(([l]) => l !== '朝中').map(([l, v, n]) => ['功', '望', '势'].includes(l) ? l + (n - Math.max(0, v)) : l + '好感' + (n - v)).join(' ');
+  return { s: (num ? '还差 ' + num : '') + (miss.some(([l]) => l === '朝中') ? (num ? ' · ' : '') + '朝中无人' : ''), tab: ['功', '望'].includes(miss[0][0]) ? '宫' : '人' };
 }
 function a2Goal() {
   const A = W.a2, z = C('zheng'), p = P(), t = W.t;
@@ -5991,10 +5994,10 @@ Object.assign(XP_KIND, { memorial: 1, envoy: 2, recommendQ: 2, teachKing: 1 });
 
 // a small 咸阳 pool (ACT2-content adds more): 秦's law and 秦's ranks, as a merchant house meets them
 RANDOM.push(
-  { id: 'xy_lian', w: 2, cd: 32, ok: () => inQin(), b: () => ({ title: '连坐', who: [], text: '隔壁人家的儿子犯了法。里正上门来说，按秦法五家连坐，你家也在里面。',
+  { id: 'xy_lian', w: 2, cd: 32, ok: () => inQin(), b: () => ({ title: '连坐', who: [], text: pick(['隔壁人家的儿子犯了法。里正上门来说，按秦法五家连坐，你家也在里面。', '同一伍的人家有人逃了役。里正拿着名册上门，说五家都要受罚。']),
     opts: [opt('「按规矩，该罚就罚。」', '鱼干-30', () => addFish(-30)),
       opt('去找里正通融', chkHint(2, 10) + ' · 败则鱼干-60', () => { if (chk(2, 10)) toast('里正收了礼，这件事算了', '#9fe89a'); else addFish(-60); })] }) },
-  { id: 'xy_jue', w: 2, cd: 32, ok: () => inQin(), b: () => ({ title: '军功', who: [], text: '街口的屠户从前线回来，拿两颗首级换了一级爵位。整条街都去他家喝酒。',
+  { id: 'xy_jue', w: 2, cd: 32, ok: () => inQin(), b: () => ({ title: '军功', who: [], text: pick(['街口的屠户从前线回来，拿两颗首级换了一级爵位。整条街都去他家喝酒。', '隔壁的小兵斩了一个首级，得了一顷田、一处宅子。他家摆了三天酒。']),
     opts: [opt('备一份礼去', '鱼干-20 · 名望+3', () => { addFish(-20); addPrest(3); }, () => W.fish >= 20), opt('「不去。」', '', () => {})] }) },
 );
 
@@ -6035,6 +6038,7 @@ SYS.load.push(W => {
   // (a save already in 咸阳 has been there long enough)
   if (W.a2.xyT === null && W.city === 'xianyang') W.a2.xyT = 0;
   if (!W.kingId || !alive(C(W.kingId))) { const k = firstAlive(QIN_KINGS); W.kingId = k ? k.id : null; }
+  if (W.kingId && W.kingId === W.player) { W.patron = null; if (W.job && W.job.from === W.player) W.job = null; }
   { const ca = C('changanz'); if (ca && ca.disp === '长安君') ca.disp = '赵长安君'; const zj = C('zhaoji'); if (zj && zj.disp === '赵太后') zj.disp = '帝太后'; }
   // 子楚's 狸 bride belongs to 秦's house (saves from before royalOut)
   const b = W.flags.liBride && C(W.flags.liBride);
@@ -6636,7 +6640,7 @@ RANDOM.push(
     return { title: '客舍', who: [c.id], text: `天黑以后，一个叫${nm(c)}的外乡人来敲门。按秦法，客舍不收没有凭证的人，${ta(c)}在街上转了半夜。`,
       opts: [opt('「进来吧。」', ta(c) + '好感+20 · 若是逃犯，你家连坐', () => { addOp(c, P(), 20); if (chance(.15)) { addFish(-40); toast('第二天里正找上门来，罚了鱼干', '#ff9a8a'); } }),
         opt('「按规矩，不收。」', '', () => {})] }; } },
-  { id: 'xy_wei', w: 2, cd: 40, ok: () => inQin() && W.fish >= 60, b: () => ({ title: '渭水', who: [], text: '渭水涨了一夜，市东的仓进了水。',
+  { id: 'xy_wei', w: 2, cd: 40, ok: () => inQin() && W.fish >= 60, b: () => ({ title: '渭水', who: [], text: pick(['渭水涨了一夜，市东的仓进了水。', '连下了半个月的雨，渭水漫过了堤，你家的货栈泡在水里。']),
     opts: [opt('连夜把货搬出来', chkHint(0, 9) + ' · 败则鱼干-50', () => { if (chk(0, 9)) toast('大半搬了出来', '#9fe89a'); else addFish(-50); }), opt('「认了。」', '鱼干-30', () => addFish(-30))] }) },
 );
 
@@ -6808,7 +6812,8 @@ Object.assign(HIST_NEXT, {
   chengping: c => logLine(c.flags.ci ? '昌平君死在了淮南。' : W.realm && W.realm.chu && W.realm.chu.king === c.id ? '昌平君战死在淮南。' : '昌平君去世了，享年' + ageOf(c) + '岁。', '#c8e0ff'),
   jingmin: () => { if (W.realm && !rFallen('wei')) { a3Spawn('weijia'); logLine('魏景湣王薨，太子假即位。', '#c8e0ff', true); } },
   youwang: () => { if (W.realm && !rFallen('chu')) { a3Spawn('fuchu'); logLine('楚幽王薨。负刍杀了哀王，自立为楚王。', '#c8e0ff', true); } },
-  xiangyan: () => logLine('项燕兵败，自杀了。', '#c8e0ff'),
+  // (his year comes before 楚's fall: the army he held together breaks)
+  xiangyan: () => { logLine('项燕兵败，自杀了。', '#c8e0ff'); const r = W.realm && W.realm.chu; if (r && r.fallen === null) { r.s = Math.max(0, r.s - 30); if (r.s <= 0) fallRealm('chu', 'ai'); } },
 });
 // (赵's line ends with 赵: no new king for a state that is gone)
 { const d0 = HIST_NEXT.daoxiang; HIST_NEXT.daoxiang = c => { if (d0 && !rFallen('zhao')) d0(c); }; }
@@ -7291,7 +7296,7 @@ function a3EndKey() {
   if (W.a2 && W.a2.blood && W.kingId === 'zheng' && alive(C('zheng'))) return W.a2.blood === 'mom' ? 'waiqi' : 'blood';
   return role === 'lead' ? (W.rank >= 4 ? 'zhongfu' : 'xiang') : role === 'ke' ? 'ke' : role === 'low' ? 'sheren' : W.rank === 0 ? 'buyi' : 'zaiye';
 }
-const CNN = '零一二三四五六';
+const CNN = '零一两三四五六';
 // the ending in words: its text, the conquests that were yours (two or more: a 列侯 and a fief), the year
 function a3EndTxt(k) {
   const A = W.a3, [, s] = A3_END[k], role = a3Role(), n = A.gong || 0, hou = n >= 2 && role !== 'king';
@@ -7497,22 +7502,24 @@ const A3_AMB = {
     done: a => a3Kids(P()).filter(k => k.sp).length > a.base, rew: ['名望+5', () => addPrest(5)] },
   ret: { t: '门客满四人', tab: '人', can: () => W.ret.length < 4, done: () => W.ret.length >= 4, prog: () => W.ret.length + '/4', rew: ['名望+5', () => addPrest(5)] },
   hoard: { t: '攒下 500 鱼干', tab: '市', can: () => W.fish < 300, done: () => W.fish >= 500, prog: () => Math.min(W.fish, 500) + '/500', rew: ['家人好感+5', () => { for (const c of household()) addOp(c, P(), 5, true); }] },
-  star: { t: '教出一个三星的孩子', tab: '家', can: () => kinPool().some(c => ageOf(c) >= 10 && ageOf(c) < 14), done: a => family().some(c => ageOf(c) >= 16 && (c.eduLv || 0) >= 3 && c.born + 64 >= a.t0), rew: ['名望+8', () => addPrest(8)] },
+  star: { t: '教出一个三星的孩子', tab: '家', keep: () => kinPool().some(c => ageOf(c) >= 10 && ageOf(c) < 16), can: () => kinPool().some(c => ageOf(c) >= 10 && ageOf(c) < 14), done: a => family().some(c => ageOf(c) >= 16 && (c.eduLv || 0) >= 3 && c.born + 64 >= a.t0), rew: ['名望+8', () => addPrest(8)] },
   lang: { t: '送一个孩子入朝', tab: '家', keep: () => alive(king()), can: () => W.act >= 3 && alive(king()) && a3Kids(P()).some(k => ageOf(k) >= 16 && !k.sp && !k.flags.path),
     base: () => a3Kids(P()).filter(k => k.flags.path === 'lang').length, done: a => a3Kids(P()).filter(k => k.flags.path === 'lang').length > a.base, rew: ['名望+8', () => addPrest(8)] },
   secret: { t: '找出一件秘密', tab: '人', can: () => W.secrets.some(s => !s.exposed && !knows(s)), base: a3Known, done: a => a3Known() > a.base, rew: ['心烦清零', () => { const p = P(); if (p) p.stress = 0; }] },
-  king: { t: () => (alive(king()) ? nm(king()) : '王') + '对你的好感到 60', tab: '宫', keep: () => alive(king()) && king() !== P() && inQin(), can: () => inQin() && alive(king()) && king() !== P() && opinion(king(), P()) < 40,
+  king: { t: () => (alive(king()) ? nm(king()) : '王') + '对你的好感到 60', tab: '宫', keep: () => alive(king()) && king() !== P() && inQin() && opinion(king(), P()) > -20, can: () => inQin() && alive(king()) && king() !== P() && opinion(king(), P()) >= 0 && opinion(king(), P()) < 40,
     done: () => alive(king()) && king() !== P() && opinion(king(), P()) >= 60, prog: () => Math.max(0, alive(king()) ? opinion(king(), P()) : 0) + '/60', rew: ['名望+10', () => addPrest(10)] },
   grand: { t: '添一个孙辈', tab: '家', can: () => a3Kids(P()).some(k => k.sp && ageOf(k) <= 38), base: () => a3Grand(P()), done: a => a3Grand(P()) > a.base, rew: ['名望+5', () => addPrest(5)] },
   // (only while someone can still marry or have children: an unmarried grown 狸, or a wife young enough)
-  clan: { t: '狸家满十二口', tab: '家', can: () => family().length >= 6 && family().length < 12 && (kinPool().some(c => ageOf(c) >= 16 && ageOf(c) <= 40 && !c.sp && canWed(c)) || household().some(c => c.female && c.sp && ageOf(c) >= 16 && ageOf(c) <= 38)), done: () => family().length >= 12, prog: () => family().length + '/12', rew: ['族谱挂匾 · 名望+10', () => addPrest(10)] },
+  clan: { t: '狸家满十二口', tab: '家', keep: () => kinPool().some(c => ageOf(c) >= 16 && ageOf(c) <= 40 && !c.sp && canWed(c)) || household().some(c => c.female && c.sp && ageOf(c) >= 16 && ageOf(c) <= 40), can: () => family().length >= 6 && family().length < 12 && (kinPool().some(c => ageOf(c) >= 16 && ageOf(c) <= 40 && !c.sp && canWed(c)) || household().some(c => c.female && c.sp && ageOf(c) >= 16 && ageOf(c) <= 38)), done: () => family().length >= 12, prog: () => family().length + '/12', rew: ['族谱挂匾 · 名望+10', () => addPrest(10)] },
   land: { t: '置下三处产业', tab: '市', can: () => estKinds().length < 3, done: () => estKinds().length >= 3, prog: () => estKinds().length + '/3', rew: ['名望+5', () => addPrest(5)] },
 };
 // one ambition at a time for the head; done: its reward and the next one (a wish that came to nothing in six years gives way)
 function a3AmbTick() {
-  const A = W.a3, p = P(); if (!alive(p) || ageOf(p) < 16 || a2Here()) return;
+  const A = W.a3, p = P(); if (!alive(p)) return;
   let a = A.amb; const d = a && A3_AMB[a.id];
+  // (a wish is the head's own, and lapses however the season goes: a new head, six years, no way left)
   if (a && (!d || a.pid !== W.player || W.t - a.t0 >= 24 || (d.keep && !d.keep()))) { A.ambLast = a.id; A.amb = a = null; }
+  if (ageOf(p) < 16 || a2Here()) return;
   if (a && d.done(a)) { A.amb = null; A.ambLast = a.id; A.ambN = (A.ambN || 0) + 1; d.rew[1](); logLine('志向达成：' + jv(d.t) + ' · ' + d.rew[0], '#ffe08a'); SFX.happy(); return; }
   if (!a) { const L = Object.keys(A3_AMB).filter(k => k !== A.ambLast && A3_AMB[k].can()); if (L.length) { const id = pick(L), D = A3_AMB[id]; A.amb = { id, t0: W.t, pid: W.player, base: D.base ? D.base() : 0 }; } }
 }
@@ -7598,8 +7605,8 @@ SYS.season.push(() => {
   // (the realm decides when 赵's last king falls: the book's year gives way)
   // (kept a year ahead of his date, protected, until the realm takes 赵: only fallRealm ends him)
   const zq = C('zhaoqian'); if (alive(zq) && !rFallen('zhao')) { zq.dieT = Math.max(HISTD.zhaoqian, W.t + 4); zq.immortal = true; }
-  // (楚's general, and 昌平君 once he is its king, likewise stand until 楚 falls)
-  for (const id of ['xiangyan', 'chengping']) { const c = C(id); if (alive(c) && !rFallen('chu') && (id === 'xiangyan' || W.realm.chu.king === id)) { c.dieT = Math.max(HISTD[id], W.t + 4); c.immortal = true; } }
+  // (昌平君, once he is 楚's king, likewise stands until 楚 falls)
+  { const c = C('chengping'); if (alive(c) && !rFallen('chu') && W.realm.chu.king === c.id) { c.dieT = Math.max(HISTD.chengping, W.t + 4); c.immortal = true; } }
   // those the story is done with leave the stage the season after: 荆轲 and the head he carried
   if (A.jk) for (const id of ['jingke', 'huanyi']) { const c = C(id); if (alive(c) && (id === 'jingke' ? c.loc === 'away' : c.disp === '樊於期')) a3Gone(c); }
   if (A.pin && W.t >= A.pin) { A.pin = 0; const wj = C('wangjian'); if (alive(wj) && wj.loc === 'away') { wj.loc = 'camp'; logLine('王上亲自去频阳，把王翦请了回来', '#c8e0ff'); } }
@@ -7654,8 +7661,8 @@ SYS.econ.push((inc, cost) => {
   // (free mode never starves a house out: the clan sends a little when the store is bare)
   if (W.act >= 3 && W.fish < 20) inc.push(['族人接济', 10]);
   if (W.flags.yitian) inc.push(['义田', 10]);
-  // 家赀: a fortune past 2000 pays a fiftieth of the rest each season
-  if (W.act >= 3 && W.fish > 2000) cost.push(['家赀', Math.floor((W.fish - 2000) / 50)]);
+  // 家赀: after act one a fortune past 2000 pays a fiftieth of the rest each season
+  if (W.flags.act1Done && W.fish > 2000) cost.push(['家赀', Math.floor((W.fish - 2000) / 50)]);
 });
 SYS.status.push((c, out) => {
   const f = c.flags; if (!alive(c) || !W.a3) return;
@@ -7701,7 +7708,7 @@ SYS.goal.push(() => {
   return null;
 });
 SYS.goal.push(() => {
-  const a = W.a3 && W.a3.amb, d = a && A3_AMB[a.id]; if (!d || !W.flags.act1Done || !alive(P())) return null;
+  const a = W.a3 && W.a3.amb, d = a && A3_AMB[a.id]; if (!d || a.pid !== W.player || !W.flags.act1Done || !alive(P())) return null;
   return { s: '志向：' + jv(d.t) + (d.prog ? ' ' + d.prog() : '') + '（' + d.tab + '）', pri: 50 };
 });
 // ---- end act3
@@ -7825,12 +7832,19 @@ const tw = (s, size, f) => { let w = 0; for (const ch of String(s)) w += chW(ch,
 // Chinese line breaking: a closing mark never starts a line (one may hang past the edge), an opening mark never ends
 // one, and a paragraph doesn't end on a one- or two-character orphan. Line counts stay what a plain wrap gives.
 const CLOSE = '，。！？、；：」）》…』”', OPEN = '（「《“『';
+const NUMCH = /[0-9A-Za-z+\-\/%.]/, NOLAB = /[\s·，。、：；（）()「」]/;
 function wrapT(s, maxW, size, f) {
   const out = [], cw = ch => chW(ch, f) * size, wid = t => { let w = 0; for (const ch of t) w += cw(ch); return w; };
   for (const para of String(s).split('\n')) {
     const p0 = out.length; let line = '', w = 0;
     for (const ch of para) {
       const c = cw(ch);
+      if (w + c > maxW && line && NUMCH.test(ch)) {
+        // (the digits before this one, and the word they count, go down with it)
+        let k = 0; while (k < line.length && NUMCH.test(line[line.length - 1 - k])) k++;
+        const lab = line.length - k - 1; if (lab >= 0 && !NOLAB.test(line[lab])) k++;
+        if (k > 0 && k < line.length) { out.push(line.slice(0, line.length - k)); line = line.slice(line.length - k) + ch; w = wid(line); continue; }
+      }
       if (w + c > maxW && line) {
         if (CLOSE.includes(ch) && !CLOSE.includes(line[line.length - 1])) { line += ch; w += c; continue; }
         // a mark already hangs: carry the last real character (and its marks) down with this one
@@ -7929,12 +7943,13 @@ function scene(loc) {
   // 咸阳 (its own places, and every tab while the house lives there) is 邯郸's painter in 秦's colours: black-lacquer
   // roofs, vermilion pillars, loess ground under a dusty sky, black banners
   const XS = { xmarket: 'market', xpalace: 'palace', xgate: 'gate', xtavern: 'tavern', xlvfu: 'lvfu', hougong: 'lvfu', camp: 'gate' };
-  const place = loc, qin = !!XS[loc] || (!!W && W.city === 'xianyang' && ['home', 'market', 'palace', 'tavern', 'gate'].includes(loc));
+  const QC = ['xianyang', 'henan', 'shu'], shu = !!W && W.city === 'shu';
+  const place = loc, qin = !!XS[loc] || (!!W && QC.includes(W.city) && ['home', 'market', 'palace', 'tavern', 'gate'].includes(loc));
   loc = XS[loc] || loc;
   const TI = qin ? '#26212c' : PAL.tile, TL = qin ? '#4e4858' : PAL.tileL, LQ = qin ? '#cc3a20' : PAL.lacq;
   const F = (x, y, w, h, col) => { s.fillStyle = col; s.fillRect(x, y, w, h); };
   let sky = [['#9dbbd6', '#b8d0e2', '#d4e2ea'], ['#8ab8e0', '#a8cce8', '#cfe4f0'], ['#c9b89a', '#dccaa8', '#ecdcc0'], ['#a8b0bc', '#c0c6ce', '#d8dce2']][season];
-  if (qin) sky = sky.map(x => mixHex(x, '#e6cc98', .3));
+  if (qin) sky = sky.map(x => mixHex(x, shu ? '#a8c8b0' : '#e6cc98', .3));
   F(0, 0, 180, 112, sky[2]); F(0, 0, 180, 30, sky[0]); F(0, 30, 180, 18, sky[1]);
   for (let i = 0; i < 180; i += 2) if (hash2(i, 29, 3) < .5) F(i, 29, 1, 1, sky[1]);
   const ram = (x, y, w, h, dark) => { F(x, y, w, h, dark ? PAL.earthD : PAL.earth); for (let j = y + 3; j < y + h; j += 4) F(x, j, w, 1, dark ? '#7a5a3a' : PAL.earthD); };
@@ -7942,7 +7957,7 @@ function scene(loc) {
     for (let i = x - over + 1; i < x + w + over - 1; i += 3) F(i, y + h, 2, 1, TL);
     if (season === 3) { F(x - over + (over >> 1), y - 1, w + over, 2, '#f4f6fa'); } };
   const pillar = (x, y, h, col) => { col = col || LQ; F(x, y, 2, h, col); F(x, y, 1, h, shade(col, 25)); F(x - 1, y + h - 2, 4, 2, PAL.earthD); };
-  const ground = (y, col) => { col = qin ? '#d6b676' : col || '#b89868'; F(0, y, 180, 112 - y, col); for (let i = 0; i < 60; i++) F(hash2(i, 1, 9) * 180 | 0, y + (hash2(i, 2, 9) * (112 - y) | 0), 2, 1, shade(col, -18)); };
+  const ground = (y, col) => { col = qin ? (shu ? '#a8a070' : '#d6b676') : col || '#b89868'; F(0, y, 180, 112 - y, col); for (let i = 0; i < 60; i++) F(hash2(i, 1, 9) * 180 | 0, y + (hash2(i, 2, 9) * (112 - y) | 0), 2, 1, shade(col, -18)); };
   // a black 秦 banner on a pole, two vermilion bands
   const banner = (x, y, h) => { F(x, y - 3, 1, h + 14, PAL.wood); F(x + 1, y, 7, h, '#16121a'); F(x + 2, y + 2, 5, 1, LQ); F(x + 2, y + h - 3, 5, 1, LQ); F(x + 1, y + h, 2, 2, '#16121a'); F(x + 6, y + h, 2, 2, '#16121a'); };
   const jar = (x, y, sz, col) => { s.fillStyle = OUT; s.beginPath(); s.ellipse(x, y, sz + 1, sz * 1.1 + 1, 0, 0, 7); s.fill(); s.fillStyle = col || '#8a5a3a'; s.beginPath(); s.ellipse(x, y, sz, sz * 1.1, 0, 0, 7); s.fill(); F(x - sz * .5, y - sz * 1.2, sz, 2, OUT); F(x - sz * .6, y - sz * .6, 2, sz * .7, shade(col || '#8a5a3a', 25)); };
@@ -7965,7 +7980,7 @@ function scene(loc) {
     // market tower with drum
     ram(74, 40, 32, 30); roof(70, 28, 40, 7, 5); F(78, 36, 24, 6, PAL.wood); F(84, 37, 12, 5, '#a04030'); F(86, 38, 8, 3, '#d0c090'); roof(72, 14, 36, 8, 4);
     F(78, 22, 2, 8, PAL.lacq); F(100, 22, 2, 8, PAL.lacq);
-    F(118, 16, 1, 30, PAL.wood); F(119, 16, 10, 12, PAL.lacq); F(120, 17, 8, 1, '#e06050');
+    if (!qin) { F(118, 16, 1, 30, PAL.wood); F(119, 16, 10, 12, PAL.lacq); F(120, 17, 8, 1, '#e06050'); }
     ground(70, '#c4a270');
     const stall = (x, col) => { for (let j = 0; j < 8; j++) F(x - j, 64 + j, 40 + 2 * j, 1, j & 1 ? col : shade(col, 20)); F(x - 6, 72, 52, 2, shade(col, -30)); F(x - 4, 74, 2, 20, PAL.wood); F(x + 42, 74, 2, 20, PAL.wood); F(x - 5, 86, 50, 8, PAL.wood); F(x - 5, 86, 50, 1, '#8a5a3a'); };
     stall(12, PAL.lacq); stall(128, PAL.qing);
@@ -8036,6 +8051,7 @@ function scene(loc) {
     }
     else if (loc === 'lvfu' && place === 'hougong') { for (const x of [52, 114]) { F(x, 48, 14, 20, '#3f8a5e'); F(x, 48, 14, 2, PAL.gold); F(x + 6, 50, 2, 18, '#9ccb98'); } }
     else if (loc === 'tavern') banner(60, 8, 12);
+    else if (loc === 'home') { pillar(30, 50, 38, LQ); pillar(108, 50, 38, LQ); banner(10, 44, 12); }
   }
   snow();
   SCN.set(key, c); return c;
@@ -8841,8 +8857,8 @@ function drawPeople() {
       hit(8, y, 164, 34, () => openList('狸氏分家', () => L.filter(alive).map(x => { const o = opinion(x, P()); return { por: x, t: nm(x), s: ageOf(x) + '岁 · ' + (LOCN[x.loc] || '') + ' · ' + (GROUPN[x.role] || ''), right: (o > 0 ? '+' : '') + o, col: opCol(o), fn: () => openSheet(x.id) }; })));
       return;
     }
-    const s = seats && seats.get(c), lk = s && s.lean;
-    charRow(c, y, () => openSheet(c.id), (c.house === 'li' ? '狸氏 · ' : '') + (s ? (lk ? (lk === 'you' ? '你的人' : '倾向' + LEAD[lk].n) : '朝中中立') : (LOCN[c.loc] || '') + ' · ' + (GROUPN[c.role] || '')));
+    const s = seats && seats.get(c), lk = s && s.lean, head = s && lk && lk !== 'you' && LEAD[lk].cat() === c;
+    charRow(c, y, () => openSheet(c.id), (c.house === 'li' ? '狸氏 · ' : '') + (s ? (head ? (lk === 'wang' ? '王' : lk === 'zong' ? '宗室之首' : LEAD[lk].n + '系之首') : lk ? (lk === 'you' ? '你的人' : '倾向' + LEAD[lk].n) : '朝中中立') : (LOCN[c.loc] || '') + ' · ' + (GROUPN[c.role] || '')));
     // (a seat at court: a square in its leader's colour, hollow while neutral)
     if (s) { rect(5, y + 27, 5, 5, lk ? LEAD[lk].ink : '#6a6268'); rect(6, y + 28, 3, 3, lk ? LEAD[lk].col : '#e8d4a8'); }
     peopleMarks(c, y, jw);
@@ -9076,7 +9092,7 @@ function makeShare(title) {
     const p = P(), A = W.a3 || {};
     if (p) { drawPortrait(p, 58, 52, 2); txt(nm(p) + ' · ' + RANKS[W.rank], 90, 128, 8, '#ffe08a'); }
     const L = [A.uni ? '前' + yearOf(A.uni) + '年，天下一统' : '六国已灭 ' + (W.realm ? a3Fell() : 0) + '/6', A.gong ? '你亲手灭了 ' + A.gong + ' 国' : '',
-      '狸家 ' + family().length + ' 口 · 名望 ' + W.prest + ' · ' + prestTier().n, '鱼干 ' + W.fish + ' · 前' + yearOf(W.t) + '年'].filter(Boolean);
+      '狸家 ' + family().length + ' 口 · 名望 ' + W.prest + ' · ' + prestTier().n, '鱼干 ' + W.fish].filter(Boolean);
     L.forEach((s, i) => txt(s, 90, 148 + i * 13, 7, '#f2ead4'));
     // the six states and the year each fell
     if (W.realm) A3_RK.forEach((k, i) => { const r = W.realm[k], f = r.fallen !== null; txt(A3_REALM[k].n + (f ? ' 前' + yearOf(r.fallen) : ' —'), 34 + (i % 3) * 56, 216 + Math.floor(i / 3) * 13, 6.5, f ? '#ffb0a0' : '#a89888'); });
