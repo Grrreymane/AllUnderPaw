@@ -1643,7 +1643,7 @@ EV.siege = () => {
 EV.maosui = () => ({ title: '毛遂', who: ['maosui', 'pingyuan'],
   text: '平原君要去楚国求救，想从门客里挑二十个文武兼备的同去，挑来挑去还差一个。一个叫毛遂的门客站出来自荐。平原君说他在门下三年，从没听人提起过他，转头问你怎么看。',
   opts: [opt('「锥子放进囊里，尖是藏不住的。」', '名望+10 · 功+4 · 毛遂好感+20 · 平原君好感+8', () => { addPrest(10); addOp(C('maosui'), P(), 20); addOp(C('pingyuan'), P(), 8);
-      addMerit(4, '荐毛遂'); W.flags.chuGift = W.t + 1; }),
+      addMerit(4, '荐毛遂'); laterItem('chuxiu', 1, '平原君从楚国回来，分了你一份'); }),
     opt('「三年没人提起，自有道理。」', '毛遂好感-20', () => { addOp(C('maosui'), P(), -20); })] });
 EV.dimian = () => ({ title: '帝秦', who: ['lzl'],
   text: '魏国派人来劝赵王尊秦王为帝，好让秦军退兵。齐人鲁仲连当着众人说：「秦若称帝，我宁可蹈东海而死。」满座的人都看向你，那个常去质子府的商人。',
@@ -1652,7 +1652,7 @@ EV.dimian = () => ({ title: '帝秦', who: ['lzl'],
     opt('不说话', '', () => {})] });
 EV.qiefu = () => ({ title: '虎符', who: ['xinling'],
   text: '深夜，信陵君的门客敲开你家后门。魏王的宠姬如姬答应替信陵君偷出兵符，宫外需要一支商队把东西送出城。事成，魏军就能来救邯郸。',
-  opts: [opt('「我的车队明早出城。」', '鱼干-50 · 名望+15 · 功+10 · 信陵君好感+30', () => { addFish(-50); addPrest(15); addOp(C('xinling'), P(), 30); addMerit(10, '虎符'); }, () => W.fish >= 50),
+  opts: [opt('「我的车队明早出城。」', '鱼干-50 · 名望+15 · 功+10 · 信陵君好感+30', () => { addFish(-50); addPrest(15); addOp(C('xinling'), P(), 30); addMerit(10, '虎符'); laterItem('zhaojian', 2, '信陵君派人送来的谢礼'); }, () => W.fish >= 50),
     opt('收下定金，然后称病', '鱼干+40 · 名望-10', () => { addFish(40); addPrest(-10); }, null, '狡诈'),
     opt('「这件事我掺和不起。」', '', () => {})] });
 EV.escape = () => {
@@ -2021,8 +2021,9 @@ EV.succession = () => {
 // advice and service earn 功 (merit); merit, fame and a patron's favour open the next rank, and a rank pays a salary.
 // Money has somewhere to go: 置产 (estates that pay every season), 名物 (treasures: fame, a sharper skill, the best
 // gifts) and 大计 (decisions: a feast, a family register, a house motto, asking for office).
-// For other systems (call with a typeof guard): addMerit(n, why), prestTier(), hasItem(id), gainItem(id, why),
-// estateIncome(); state W.merit, W.patron, W.job, W.items, W.estates. ACT2/3 push into JOBS, PROMO and DECISIONS.
+// For other systems (call with a typeof guard): addMerit(n, why), prestTier() → { i, n, op }, hasItem(id), gainItem(id, why),
+// laterItem(id, seasons, why), estateIncome(); state W.merit, W.patron, W.job, W.items, W.estates. ACT2/3 push into JOBS
+// (errands), PROMO (ranks: { to, ev, ok(), need() }) and DECISIONS (大计 rows).
 
 // ---------------------------------------------------------- merit, rank, fame
 const SALARY = [0, 6, 20, 40, 60, 100, 150];
@@ -2065,11 +2066,13 @@ function updPatron() {
 }
 
 // ---------------------------------------------------------- 差事 (errands)
-// A job: from (who gives it; '*' = whoever offers), t (two characters for the row), g (what to do), tab (where you do
-// it), due (seasons) or dueT (a fixed turn), goal { kind: didAct kind(s), who: ids | 'from' | j => ids, n: times },
-// check(j) → true | 'fail' for errands that are a state (备金), acts(c, j) / tabs(tab, j): the extra (gold) buttons it
-// brings, rew { merit fish prest heir op fn }, ok(giver), pre(queued offer, giver): pick a target, init(j): note the
-// state when taken on, letter: comes by post (the giver may be in another city). ACT2 adds court errands to JOBS.
+// A job: patron (who gives it; '*' = whoever offers), title (two characters for the row), task (what to do), tab (where
+// you do it), due (seasons) or dueT (a fixed turn), goal { kind: didAct kind(s), target: ids | 'giver' | j => ids,
+// n: times, any: failed tries count too }, check(j) → true | 'fail' for errands that are a state (备金), acts(c, j) /
+// tabs(tab, j): the extra (gold) buttons it brings, reward { merit fish prest heir op fn }, ok(giver), pre(queued offer,
+// giver): pick a target (q.tgt), init(j): note the state when taken on, letter: comes by post (the giver may be in
+// another city), once: never offered again, line: what the giver says. ACT2 pushes court errands into JOBS.
+// W.job = { id, from (the giver's id), tgt, t0, due (turn), n (times done) }.
 const yrHostage = () => { const y = C('yiren'); return inCity(y) && y.loc === 'hostage' && !W.flags.escapeLead; };
 const afterAdopt = () => !!(W.flags.zichu || W.heir >= 100 || W.flags.siege);
 const zhengHome = () => { const z = C('zheng'); return z ? [z, C(z.mom)].filter(x => inCity(x) && x.id !== W.player && x.loc !== 'home').map(x => x.id) : []; };
@@ -2086,82 +2089,82 @@ const payAct = (c, n, t) => mkAct({ id: 'job_pay', kind: 'jobpay', n: '送去 ' 
   no: () => W.fish < n ? '鱼干不够 ' + n : '', fn: () => { if (W.fish < n) return; addFish(-n); if (reach(c)) react(c, 'gift', true); didAct('jobpay', c, -1, true); } });
 const JOBS = [
   // 异人, while he is a hostage in 邯郸
-  { id: 'ditie', from: 'yiren', t: '递帖', g: '拜会平原君', tab: 'people', due: 2, once: 1, goal: { kind: ['talk', 'pay'], who: ['pingyuan'] },
-    rew: { merit: 6, op: { pingyuan: 5 } }, ok: () => yrHostage() && inCity(C('pingyuan')),
+  { id: 'ditie', patron: 'yiren', title: '递帖', task: '拜会平原君', tab: 'people', due: 2, once: 1, goal: { kind: ['talk', 'pay'], target: ['pingyuan'] },
+    reward: { merit: 6, op: { pingyuan: 5 } }, ok: () => yrHostage() && inCity(C('pingyuan')),
     line: '「平原君门下客多，我一个质子进不去。你替我去递个帖子。」' },
-  { id: 'duanchui', from: 'yiren', t: '断炊', g: '给异人送 40 鱼干', tab: 'people', due: 2, goal: { kind: 'jobpay', who: 'from' },
-    rew: { merit: 5, op: { yiren: 8 } }, ok: () => yrHostage(), acts: (c, j) => c.id === j.from ? [payAct(c, 40, '断炊')] : [],
+  { id: 'duanchui', patron: 'yiren', title: '断炊', task: '给异人送 40 鱼干', tab: 'people', due: 2, goal: { kind: 'jobpay', target: 'giver' },
+    reward: { merit: 5, op: { yiren: 8 } }, ok: () => yrHostage(), acts: (c, j) => c.id === j.from ? [payAct(c, 40, '断炊')] : [],
     line: '「府里又断炊了。先借我四十条鱼干，秦国的钱一到就还你。」' },
-  { id: 'chuyu', from: 'yiren', t: '楚语', g: '教异人楚语', tab: 'people', due: 3, once: 1, goal: { kind: 'lesson', who: 'from' },
-    rew: { merit: 6, heir: 5 }, ok: () => yrHostage() && W.flags.knowHuayang && W.heir < 90,
-    acts: (c, j) => c.id === j.from ? [mkAct({ id: 'job_chuyu', kind: 'lesson', n: '教楚语', ap: 1, gold: true, hint: chkHint(2, 9) + ' · 差事',
-      fn: () => { if (!spendAp(1)) return; const ok = chk(2, 9); if (!ok) toast('没教会，下回再试', '#dddddd'); react(c, 'teach', ok, ok ? '楚语' : ''); didAct('lesson', c, 2, ok); } })] : [],
+  { id: 'chuyu', patron: 'yiren', title: '楚语', task: '教异人楚语', tab: 'people', due: 3, once: 1, goal: { kind: 'chuyu', target: 'giver' },
+    reward: { merit: 6, heir: 5 }, ok: () => yrHostage() && W.flags.knowHuayang && W.heir < 90,
+    acts: (c, j) => c.id === j.from ? [mkAct({ id: 'job_chuyu', kind: 'chuyu', n: '教楚语', ap: 1, gold: true, hint: chkHint(2, 9) + ' · 差事',
+      fn: () => { if (!spendAp(1)) return; const ok = chk(2, 9); if (!ok) toast('没教会，下回再试', '#dddddd'); react(c, 'teach', ok, ok ? '楚语' : ''); didAct('chuyu', c, 2, ok); } })] : [],
     line: '「华阳夫人是楚人。你走南闯北，会几句楚语吧？教教我。」' },
-  { id: 'tanlv', from: 'yiren', t: '探吕', g: '刺探吕不韦', tab: 'people', due: 3, once: 1, goal: { kind: 'spy', who: ['lv'] },
-    rew: { merit: 8, op: { yiren: 3 } }, ok: () => yrHostage() && inCity(C('lv')),
+  { id: 'tanlv', patron: 'yiren', title: '探吕', task: '刺探吕不韦', tab: 'people', due: 3, once: 1, goal: { kind: 'spy', target: ['lv'] },
+    reward: { merit: 8, op: { yiren: 3 } }, ok: () => yrHostage() && inCity(C('lv')),
     line: '「吕公待我很好。可他到底图什么？你替我探一探。」' },
-  { id: 'jiashu', from: 'yiren', t: '家书', g: '替异人捎家书', tab: 'travel', due: 3, once: 1, goal: { kind: 'letter' },
-    rew: { merit: 6, heir: 3, op: { xiaji: 10 } }, ok: () => yrHostage() && alive(C('xiaji')),
+  { id: 'jiashu', patron: 'yiren', title: '家书', task: '替异人捎家书', tab: 'travel', due: 3, once: 1, goal: { kind: 'letter' },
+    reward: { merit: 6, heir: 3, op: { xiaji: 10 } }, ok: () => yrHostage() && alive(C('xiaji')),
     tabs: tab => tab === 'travel' ? [mkAct({ id: 'job_letter', kind: 'letter', n: '替异人捎家书', ap: 1, fish: 30, gold: true, hint: '差事 · 夏姬好感+10',
       no: () => W.fish < 30 ? '鱼干不够 30' : '', fn: () => { if (W.fish < 30 || !spendAp(1)) return; addFish(-30); didAct('letter', C('xiaji'), 2, true); } })] : [],
     line: '「我娘在咸阳，好几年没有音信了。替我捎封信去。」' },
   // after the adoption, through the long wait for the escape
-  { id: 'huyuan', from: 'yiren', t: '护院', g: '招一名门客', tab: 'people', due: 3, once: 1, goal: { kind: 'hire' },
-    rew: { merit: 8, op: { yiren: 5 } }, ok: () => yrHostage() && afterAdopt() && W.ret.length < RET_MAX,
+  { id: 'huyuan', patron: 'yiren', title: '护院', task: '招一名门客', tab: 'people', due: 3, once: 1, goal: { kind: 'hire' },
+    reward: { merit: 8, op: { yiren: 5 } }, ok: () => yrHostage() && afterAdopt() && W.ret.length < RET_MAX,
     init: j => { j.base = W.ret.slice(); }, check: j => W.ret.some(id => !(j.base || []).includes(id)),
     line: '「城里对秦人越来越凶。你家里多几个能打的，我也安心些。」' },
-  { id: 'tangong', from: 'yiren', t: '探宫', g: '打听宫里的动静', tab: 'people', due: 3, once: 1, goal: { kind: 'ask' },
-    rew: { merit: 6, fn: () => logLine(W.t < 14 ? '打听到：秦军' + whenT(14) + '要围邯郸' : '打听到：赵王要在' + whenT(21) + '杀质子', '#ffe08a') },
+  { id: 'tangong', patron: 'yiren', title: '探宫', task: '打听宫里的动静', tab: 'people', due: 3, once: 1, goal: { kind: 'ask', any: 1 },
+    reward: { merit: 6, fn: () => logLine(W.t < 14 ? '打听到：秦军' + whenT(14) + '要围邯郸' : '打听到：赵王要在' + whenT(21) + '杀质子', '#ffe08a') },
     ok: () => yrHostage() && afterAdopt() && W.t < 20,
     line: '「宫里要是有什么动静，我得先知道。」' },
-  { id: 'beijin', from: 'yiren', t: '备金', g: '备出城的金子', tab: 'market', dueT: 22, once: 1, prog: () => Math.min(W.fish, 300) + '/300',
-    rew: { merit: 12 }, ok: () => yrHostage() && afterAdopt() && W.t <= 19,
+  { id: 'beijin', patron: 'yiren', title: '备金', task: '备出城的金子', tab: 'market', dueT: 22, once: 1, prog: () => Math.min(W.fish, 300) + '/300',
+    reward: { merit: 12 }, ok: () => yrHostage() && afterAdopt() && W.t <= 19,
     check: () => W.flags.escapeLead ? (W.flags.escapeLead === 'you' ? true : 'fail') : W.t >= 22 ? 'fail' : false,
     line: '「赵王迟早要拿我开刀。到时候城门得用金子开，你先备着。」' },
   // 平原君 (your patron, or once he thinks well of you)
-  { id: 'jianshi', from: 'pingyuan', t: '荐士', g: '向平原君荐一名门客', tab: 'people', due: 4, goal: { kind: 'recommend', who: 'from' },
-    rew: { merit: 10, prest: 5 }, ok: () => W.ret.some(id => alive(C(id))),
+  { id: 'jianshi', patron: 'pingyuan', title: '荐士', task: '向平原君荐一名门客', tab: 'people', due: 4, goal: { kind: 'recommend', target: 'giver' },
+    reward: { merit: 10, prest: 5 }, ok: () => W.ret.some(id => alive(C(id))),
     acts: (c, j) => c.id === j.from ? [mkAct({ id: 'job_jianshi', kind: 'recommend', n: '荐门客', ap: 1, gold: true, hint: '差事 · 门客归平原君门下',
       no: () => W.ret.some(id => alive(C(id))) ? '' : '你没有门客', fn: () => pickChar('荐谁给平原君？ ◆1', W.ret.map(C).filter(alive), r => {
         if (!spendAp(1)) return;
         W.ret = W.ret.filter(x => x !== r.id); r.loc = 'pingyuan'; if (r.house === 'ret') r.house = null; addOp(r, P(), 5, true);
         logLine(nm(r) + '去了平原君门下', '#c8e0ff'); didAct('recommend', c, 2, true); }) })] : [],
     line: '「我门下三千客，还缺能办事的。你那里要是有人才，荐一个给我。」' },
-  { id: 'junliang', from: 'pingyuan', t: '军粮', g: '给平原君送 100 鱼干', tab: 'people', due: 3, goal: { kind: 'jobpay', who: 'from' },
-    rew: { merit: 8, prest: 10 }, ok: () => W.t >= 4 && W.t <= 44, acts: (c, j) => c.id === j.from ? [payAct(c, 100, '军粮')] : [],
+  { id: 'junliang', patron: 'pingyuan', title: '军粮', task: '给平原君送 100 鱼干', tab: 'people', due: 3, goal: { kind: 'jobpay', target: 'giver' },
+    reward: { merit: 8, prest: 10 }, ok: () => W.t >= 4 && W.t <= 44, acts: (c, j) => c.id === j.from ? [payAct(c, 100, '军粮')] : [],
     line: '「前线又缺粮了。城里的商户都在凑，你家也出一份。」' },
-  { id: 'qinglu', from: 'pingyuan', t: '请鲁', g: '去请鲁仲连', tab: 'people', due: 3, once: 1, goal: { kind: 'talk', who: ['lzl'] },
-    rew: { merit: 6, op: { lzl: 5 } }, ok: () => inCity(C('lzl')),
+  { id: 'qinglu', patron: 'pingyuan', title: '请鲁', task: '去请鲁仲连', tab: 'people', due: 3, once: 1, goal: { kind: 'talk', target: ['lzl'] },
+    reward: { merit: 6, op: { lzl: 5 } }, ok: () => inCity(C('lzl')),
     line: '「鲁仲连不肯登我的门。你们常在酒肆碰面，替我请他过府一叙。」' },
   // 子楚's letters from 咸阳 (after act one)
-  { id: 'zhaokan', from: 'yiren', t: '照看', g: '去看看政母子', tab: 'people', due: 3, letter: 1, goal: { kind: ['talk', 'gift'], who: () => zhengHome() },
-    rew: { merit: 8, op: { yiren: 5 } }, ok: () => !!W.flags.act1Done && zhengHome().length > 0,
+  { id: 'zhaokan', patron: 'yiren', title: '照看', task: '去看看政母子', tab: 'people', due: 3, letter: 1, goal: { kind: ['talk', 'gift'], target: () => zhengHome() },
+    reward: { merit: 8, op: { yiren: 5 } }, ok: () => !!W.flags.act1Done && zhengHome().length > 0,
     line: () => nm(C('yiren')) + '来信：「夫人和孩子留在邯郸，我放心不下。替我去看看他们。」' },
-  { id: 'kaimeng', from: 'yiren', t: '开蒙', g: '给政开蒙', tab: 'people', due: 4, once: 1, letter: 1, goal: { kind: 'kaimeng', who: ['zheng'] },
-    rew: { merit: 10, op: { yiren: 5 } }, ok: () => { const z = C('zheng'); return !!W.flags.act1Done && inCity(z) && z.loc !== 'home' && ageOf(z) >= 5 && ageOf(z) < 13; },
+  { id: 'kaimeng', patron: 'yiren', title: '开蒙', task: '给政开蒙', tab: 'people', due: 4, once: 1, letter: 1, goal: { kind: 'kaimeng', target: ['zheng'] },
+    reward: { merit: 10, op: { yiren: 5 } }, ok: () => { const z = C('zheng'); return !!W.flags.act1Done && inCity(z) && z.loc !== 'home' && ageOf(z) >= 5 && ageOf(z) < 13; },
     acts: c => c.id === 'zheng' ? [mkAct({ id: 'job_kaimeng', kind: 'kaimeng', n: '给政开蒙', ap: 1, gold: true, hint: '差事 · 政好感+10',
       fn: () => { if (!spendAp(1)) return; c.edu = c.edu || [0, 0, 0, 0]; c.edu[1] += 2; addOp(c, P(), 10); react(c, 'teach', true, '认字'); didAct('kaimeng', c, 1, true); } })] : [],
     line: () => nm(C('yiren')) + '来信：「政该认字了。邯郸没有好先生，你替我给他开个蒙。」' },
-  { id: 'songjin', from: 'yiren', t: '送金', g: () => '给' + nm(C('yiren')) + '送 150 鱼干', tab: 'travel', due: 4, letter: 1, goal: { kind: 'sendgold' },
-    rew: { merit: 12, op: { yiren: 8 } }, ok: () => !!W.flags.act1Done && alive(C('yiren')) && !inCity(C('yiren')),
+  { id: 'songjin', patron: 'yiren', title: '送金', task: () => '给' + nm(C('yiren')) + '送 150 鱼干', tab: 'travel', due: 4, letter: 1, goal: { kind: 'sendgold' },
+    reward: { merit: 12, op: { yiren: 8 } }, ok: () => !!W.flags.act1Done && alive(C('yiren')) && !inCity(C('yiren')),
     tabs: tab => tab === 'travel' ? [mkAct({ id: 'job_gold', kind: 'sendgold', n: '托人送金', ap: 1, fish: 150, gold: true, hint: '差事 · 送去' + (CITY[cityOf(C('yiren'))] || CITY.xianyang).n,
       no: () => W.fish < 150 ? '鱼干不够 150' : '', fn: () => { if (W.fish < 150 || !spendAp(1)) return; addFish(-150); didAct('sendgold', C('yiren'), -1, true); } })] : [],
     line: () => nm(C('yiren')) + '来信：「咸阳处处要打点。你那里方便的话，送些钱来。」' },
   // from whoever gives you errands, in town
-  { id: 'jiehao', from: '*', t: '结好', g: j => '与' + nm(C(j.tgt)) + '走动两回', tab: 'people', due: 4, goal: { kind: ['talk', 'gift', 'pay'], who: j => [j.tgt], n: 2 },
-    rew: { merit: 6 }, ok: gv => !!friendTarget(gv), pre: (q, gv) => { const c = friendTarget(gv); q.tgt = c ? c.id : null; },
+  { id: 'jiehao', patron: '*', title: '结好', task: j => '与' + nm(C(j.tgt)) + '走动两回', tab: 'people', due: 4, goal: { kind: ['talk', 'gift', 'pay'], target: j => [j.tgt], n: 2 },
+    reward: { merit: 6 }, ok: gv => !!friendTarget(gv), pre: (q, gv) => { const c = friendTarget(gv); q.tgt = c ? c.id : null; },
     line: j => '「' + nm(C(j.tgt)) + '这个人，往后用得着。你替我多走动走动。」' },
-  { id: 'maimai', from: '*', t: '生意', g: '跑两趟买卖', tab: 'market', due: 3, goal: { kind: ['trade', 'caravan', 'venture'], n: 2 },
-    rew: { merit: 5, fish: 30 }, ok: () => true,
+  { id: 'maimai', patron: '*', title: '生意', task: '跑两趟买卖', tab: 'market', due: 3, goal: { kind: ['trade', 'caravan', 'venture'], n: 2 },
+    reward: { merit: 5, fish: 30 }, ok: () => true,
     line: '「府里开销紧。你替我跑几趟买卖，赚的分你一份。」' },
 ];
 const jobDef = id => JOBS.find(d => d.id === id) || null;
-const jobWho = j => { const d = jobDef(j.id), w = d && d.goal && d.goal.who; return !w ? null : w === 'from' ? [j.from] : jv(w, j); };
-const jobG = j => jv(jobDef(j.id).g, j);
+const jobWho = j => { const d = jobDef(j.id), w = d && d.goal && d.goal.target; return !w ? null : w === 'giver' ? [j.from] : jv(w, j); };
+const jobG = j => jv(jobDef(j.id).task, j);
 const jobLeft = j => Math.max(0, j.due - W.t);
 const jobWhen = j => jobDef(j.id).dueT ? '出城前' : '余' + jobLeft(j) + '季';
 function rewTxt(d) {
-  const r = d.rew || {}, out = [];
+  const r = d.reward || {}, out = [];
   if (r.merit) out.push('功+' + r.merit);
   if (r.heir && !W.flags.zichu) out.push('立嗣+' + r.heir);
   if (r.prest) out.push('名望+' + r.prest);
@@ -2169,7 +2172,7 @@ function rewTxt(d) {
   for (const id in r.op || {}) if (C(id)) out.push(nm(C(id)) + '好感+' + r.op[id]);
   return out.join(' · ');
 }
-// season start: 55% a new errand when you hold a rank and have none (one season's rest after the last)
+// season start: 55% a new errand when you hold a rank and have none (a season's rest after the last)
 function offerJob() {
   if (W.job || W.cool.job || W.rank < 1 || W.queue.some(q => q.ev === 'joboffer') || !chance(.55)) return;
   const gv = [], pa = patron(), py = C('pingyuan');
@@ -2177,14 +2180,14 @@ function offerJob() {
   if (inCity(py) && py !== pa && opinion(py, P()) >= 20) gv.push(py);
   const done = W.jobDone || {}, opts = [];
   for (const d of JOBS) for (const g of gv) {
-    if ((d.from !== '*' && d.from !== g.id) || (!d.letter && !inCity(g))) continue;
+    if ((d.patron !== '*' && d.patron !== g.id) || (!d.letter && !inCity(g))) continue;
     if (done[d.id] !== undefined && (d.once || W.t - done[d.id] < 8)) continue;
     if (d.ok && !d.ok(g)) continue;
     opts.push([d, g]);
   }
   if (!opts.length) return;
   // the patron's own errands come first
-  const own = opts.filter(o => o[0].from !== '*'), [d, g] = pick(own.length && chance(.75) ? own : opts);
+  const own = opts.filter(o => o[0].patron !== '*'), [d, g] = pick(own.length && chance(.75) ? own : opts);
   const q = { ev: 'joboffer', id: d.id, from: g.id };
   if (d.pre) { d.pre(q, g); if (!q.tgt) return; }
   W.queue.push(q);
@@ -2193,8 +2196,11 @@ EV.joboffer = e => {
   const d = e && jobDef(e.id), gv = e && C(e.from);
   if (!d || !alive(gv) || W.job || W.rank < 1 || (d.ok && !d.ok(gv)) || (d.pre && !C(e.tgt))) return null;
   const j = { id: d.id, from: gv.id, tgt: e.tgt || null }, line = jv(d.line, j);
+  // what to do, by when, and what it brings (only the merit when the whole list would not fit)
+  const when = d.dueT ? '出城前' : d.due + '季内', full = [jobG(j), when, rewTxt(d)].join(' · ');
+  const hint = tw(full, 5.5, 1) <= 142 ? full : jobG(j) + ' · ' + when + ' · 功+' + ((d.reward || {}).merit || 0);
   return { title: '差事', who: [gv.id].concat(j.tgt ? [j.tgt] : []), text: (d.letter ? '' : nm(gv) + '说：') + line,
-    opts: [opt('「这件事交给我。」', jobG(j) + ' · ' + (d.dueT ? '出城前' : d.due + '季内') + ' · 功+' + ((d.rew || {}).merit || 0), () => takeJob(j)),
+    opts: [opt('「这件事交给我。」', hint, () => takeJob(j)),
       opt('「近来抽不开身。」', nm(gv) + '好感-2', () => { addOp(gv, P(), -2, true); W.cool.job = 2; })] };
 };
 function takeJob(j) {
@@ -2209,7 +2215,7 @@ function endJob(ok, why) {
   const gv = C(j.from), p = P(), g = jobG(j);
   W.jobDone = W.jobDone || {}; W.jobDone[d.id] = W.t;
   if (ok) {
-    const r = d.rew || {};
+    const r = d.reward || {};
     logLine('差事办妥：' + g, '#ffe08a'); SFX.happy();
     addMerit(r.merit || 0, '差事');
     if (r.fish) addFish(r.fish);
@@ -2242,7 +2248,7 @@ function jobTick() {
 // what you did: does it count for the errand?
 function jobDid(kind, t, ok) {
   const j = W.job, d = j && jobDef(j.id);
-  if (!d || !d.goal || !ok || ![].concat(d.goal.kind).includes(kind)) return;
+  if (!d || !d.goal || !(ok || d.goal.any) || ![].concat(d.goal.kind).includes(kind)) return;
   const who = jobWho(j); if (who && !(t && who.includes(t.id))) return;
   j.n = (j.n || 0) + 1;
   if (j.n >= (d.goal.n || 1)) endJob(true); else toast('差事 ' + j.n + '/' + d.goal.n, '#ffe08a');
@@ -2251,7 +2257,7 @@ function jobDid(kind, t, ok) {
 function jobCard() {
   const j = W.job, d = j && jobDef(j.id); if (!d) return;
   const gv = C(j.from);
-  showCard({ title: '差事 · ' + d.t, who: alive(gv) ? [gv.id] : [],
+  showCard({ title: '差事 · ' + d.title, who: alive(gv) ? [gv.id] : [],
     text: jv(d.line, j) + '\n要办：' + jobG(j) + (d.prog ? ' ' + d.prog(j) : '') + '\n期限：' + (d.dueT ? '出城那夜' : '还剩 ' + jobLeft(j) + ' 季') + '\n办妥：' + rewTxt(d),
     opts: [opt('「这就去办。」', '', () => {}), opt('「这件事我办不了。」', '功-3 · ' + nm(gv) + '好感-5', () => endJob(false))] });
 }
@@ -2285,6 +2291,8 @@ const PROMO = [
     need: () => { const r = keqingBy(); return [['功', W.merit || 0, 60], ['望', W.prest, 50], [r ? nm(r) : '举荐', r ? opinion(r, P()) : 0, 50]]; } },
 ];
 const nextPromo = () => PROMO.find(x => x.ok()) || null;
+// the merit the next rank asks for, when there is a next rank to rise to here (else null)
+const nextNeed = () => W.rank >= 1 && PROMO.some(x => x.to === W.rank + 1) ? RANK_NEED[W.rank + 1] : null;
 const promoReady = () => { const x = nextPromo(); return !!x && x.need().every(([, v, n]) => v >= n); };
 const promoTxt = () => {
   const x = nextPromo();
@@ -2402,15 +2410,19 @@ const LIKE_BY = { shi: ['sunzi', 'zhaojian', 'tongjing'], merchant: ['yeming', '
 function likeOf(c) { if (!c) return null; if (LIKE[c.id]) return LIKE[c.id]; const L = LIKE_BY[c.role] || LIKE_BY.commoner; return L[hashStr(c.id + '#like') % L.length]; }
 function hasItem(id) { return !!W && Array.isArray(W.items) && W.items.includes(id); }
 function gainItem(id, why) { if (!MEIWU[id] || !W) return; W.items.push(id); logLine('得到' + MEIWU[id].n + (why ? '（' + why + '）' : ''), '#ffe08a'); }
-// fame from what stands on the shelf: +1 a season for each kind, at most +3
-const itemPrest = () => Math.min(3, new Set(W.items).size);
+// a thank-you that arrives dt seasons later (the story events that earn one call this)
+function laterItem(id, dt, why) { if (W) (W.flags.gifts = W.flags.gifts || []).push([W.t + dt, id, why]); }
+// fame from what stands on the shelf: +1 a season for each kind, at most +3. Treasures keep up a house's standing
+// up to 100 (有名); past that, fame has to come from deeds (else every house drifts into the top tiers on its own)
+const ITEM_FAME = 100;
+const itemPrest = () => W.prest < ITEM_FAME ? Math.min(3, new Set(W.items).size) : 0;
 const giftBase = id => Math.min(60, R(MEIWU[id].p / 6));
 const giftVal = (c, id) => Math.min(60, R(MEIWU[id].p / 6 * (likeOf(c) === id ? 1.5 : 1)));
 const grand = c => ['ruler', 'noble'].includes(c.role);
 function itemFx(id) {
   const it = MEIWU[id];
   if (it.use) return '家人好感+6 · 心烦↓';
-  return '每季名望+1' + (it.st ? ' · ' + STATN[it.st.findIndex(v => v > 0)] + '+1' : '') + ' · 送礼好感+' + giftBase(id);
+  return [W.prest < ITEM_FAME ? '每季名望+1' : '', it.st ? STATN[it.st.findIndex(v => v > 0)] + '+1' : '', '送礼好感+' + giftBase(id)].filter(Boolean).join(' · ');
 }
 function rollStall() {
   if (!chance(.6)) { W.stall = null; return; }
@@ -2440,7 +2452,7 @@ function sellItem(id) { const i = W.items.indexOf(id); if (i < 0) return; W.item
 function openTreasures() {
   openList('名物', () => W.items.map((id, i) => ({ icon: icoItem(id), t: MEIWU[id].n, s: cutS(itemFx(id)),
     act: mkAct({ id: 'sell_' + i, n: '卖', ap: 0, hint: '+' + sellP(id), fn: () => sellItem(id) }) })),
-    { get sub() { return '每季名望 +' + itemPrest() + '（最多三件）· 送礼在人物卡上'; }, empty: '家里还没有名物。市集的摊子上偶尔有卖的。' });
+    { get sub() { return '每季名望+' + itemPrest() + '（最多三件，' + ITEM_FAME + '为止）· 送礼在人物卡上'; }, empty: '家里还没有名物。市集的摊子上偶尔有卖的。' });
 }
 // 送礼 turns into a small menu once the house has something better than fish to give
 function giftMenu(c, A) {
@@ -2520,7 +2532,6 @@ function doMotto() {
   pickOpt('狸家立什么家训？', MOTTO.map(t => ({ n: t + (W.motto === t ? '（现行）' : ''), s: '名望-100 · 新生的狸三成随此', style: W.motto === t ? 'off' : 'jade',
     fn: () => { if (W.prest < 100 || W.motto === t) return; addPrest(-100); W.motto = t; W.mottoT = W.t; logLine('狸家立了家训：' + t, '#ffe08a'); } })));
 }
-const lawElder = () => typeof W.law === 'string' && W.law !== '择贤';
 const DECISIONS = [
   { id: 'office', ico: () => icoDec('office'), t: () => { const x = nextPromo(); return '求官' + (x ? ' · ' + RANKS[x.to] : ''); }, s: promoTxt, close: true,
     act: () => mkAct({ id: 'd_office', n: '办', ap: 0, no: () => promoReady() ? (W.cool.promo ? '再等 ' + W.cool.promo + ' 季' : '') : '条件未齐', fn: () => { const x = nextPromo(), e = x && EV[x.ev](); if (e) showCard(e); } }) },
@@ -2531,9 +2542,9 @@ const DECISIONS = [
   { id: 'motto', ico: () => icoDec('motto'), t: () => '立家训' + (W.motto ? ' · 现为' + W.motto : ''), s: '名望100 · 新生的狸三成随家训', close: true,
     act: () => mkAct({ id: 'd_motto', n: '办', ap: 0, no: () => W.prest < 100 ? '名望不足 100' : '', fn: doMotto }) },
   // the succession law belongs to the growth system (W.law); switching it costs fame, once per head
-  { id: 'law', show: () => typeof W.law === 'string', ico: () => ICON.seal, t: () => '改家法 · ' + (lawElder() ? '择贤' : '立嫡长'), s: '名望100 · 一代家主只能改一次',
+  { id: 'law', show: () => typeof W.law === 'string', ico: () => ICON.seal, t: () => '改家法 · ' + (W.law === '择贤' ? '立嫡长' : '择贤'), s: '名望100 · 一代家主只能改一次',
     act: () => mkAct({ id: 'd_law', n: '办', ap: 0, danger: '名望-100', no: () => W.flags.lawBy === W.player ? '这一代改过了' : W.prest < 100 ? '名望不足 100' : '',
-      fn: () => { if (W.prest < 100 || W.flags.lawBy === W.player) return; addPrest(-100); if (lawElder()) { W.flags.lawE = W.law; W.law = '择贤'; } else W.law = W.flags.lawE || '嫡长';
+      fn: () => { if (W.prest < 100 || W.flags.lawBy === W.player) return; addPrest(-100); W.law = W.law === '择贤' ? '嫡长' : '择贤';
         W.flags.lawBy = W.player; logLine('狸家改了家法：' + (W.law === '择贤' ? '择贤而立' : '立嫡立长'), '#ffe08a'); } }) },
 ];
 function openDecisions() {
@@ -2542,13 +2553,13 @@ function openDecisions() {
 }
 // the 功名 card: tap the rank line or the merit bar on the player card
 function openCareer() {
-  const pt = prestTier(), need = RANK_NEED[W.rank + 1], pa = patron(), j = W.job, d = j && jobDef(j.id);
+  const pt = prestTier(), need = nextNeed(), pa = patron(), j = W.job, d = j && jobDef(j.id);
   const rows = [
     { icon: icoDec('office'), t: '身份：' + RANKS[W.rank], right: '俸禄 ' + (SALARY[W.rank] || 0) + '/季', col: '#276a32' },
     { t: '功 ' + (W.merit || 0) + (need ? ' / ' + need : ''), s: need ? '差事、献策、出力都记功' : '' },
     { t: '名望 ' + W.prest + ' · ' + pt.n, s: '众人好感+' + pt.op + ' · 提亲+' + pt.i * 5 + '%' + (pt.next ? ' · ' + pt.next + ' 升一档' : '') },
     pa ? { por: pa, t: '主公 ' + nm(pa), s: '对你 ' + opinion(pa, P()), fn: () => openSheet(pa.id, true) } : { t: '主公：无', s: W.rank ? '' : '结交异人或平原君，自有门路' },
-    d ? { icon: ICON.scroll, t: '差事 · ' + d.t, s: jobG(j) + ' · ' + jobWhen(j), fn: jobCard, close: true } : { icon: ICON.scroll, t: '差事：无', s: W.rank ? '主公会派差事给你' : '当上舍人才有差事' },
+    d ? { icon: ICON.scroll, t: '差事 · ' + d.title, s: jobG(j) + ' · ' + jobWhen(j), fn: jobCard, close: true } : { icon: ICON.scroll, t: '差事：无', s: W.rank ? '主公会派差事给你' : '当上舍人才有差事' },
     { icon: icoDec('office'), t: '求官', s: promoTxt(), fn: openDecisions },
     { icon: icoEst('shop'), t: '产业', right: '+' + estateIncome() + '/季', col: '#276a32', fn: openEstates },
     { icon: icoItem(W.items[0] || 'bi'), t: '名物', right: W.items.length + ' 件', fn: openTreasures },
@@ -2615,8 +2626,10 @@ SYS.stat.push((c, i) => {
 });
 SYS.season.push(() => {
   updPatron();
-  if (W.items.length) W.prest = clamp(W.prest + itemPrest(), 0, 999);
-  if (W.flags.chuGift && W.t >= W.flags.chuGift) { delete W.flags.chuGift; gainItem('chuxiu', '平原君从楚国回来，分了你一份'); }
+  if (W.items.length) W.prest = Math.min(Math.max(W.prest, ITEM_FAME), W.prest + itemPrest());
+  if (W.flags.gifts) { for (const [t, id, why] of W.flags.gifts) if (W.t >= t) gainItem(id, why); W.flags.gifts = W.flags.gifts.filter(g => W.t < g[0]); if (!W.flags.gifts.length) delete W.flags.gifts; }
+  // fame at the top takes keeping up: past 望族 and again past 名动天下 it fades one more a season (the core fades it past 150)
+  if (W.prest > 300) W.prest--; if (W.prest > 500) W.prest--;
   if (W.estates.granary && siegeOn()) W.flags.stock = true;
   rollStall();
   // promotion and the 平原君 door come as cards (before any errand); declining one waits a while
@@ -2648,7 +2661,8 @@ SYS.tab.push((tab, A) => {
   if (tab === 'market') A.push(mkAct({ id: 'estate', n: '置产', ap: 0, open: true, hint: estKinds().length ? '产业每季 +' + estateIncome() : '置下产业，每季分红', fn: openEstates }));
   if (tab === 'court') {
     A.push(adviseAct());
-    A.push(mkAct({ id: 'decide', n: '大计', ap: 0, open: true, hint: promoReady() ? '求官的条件齐了' : '求官 · 大宴 · 家谱 · 家训', fn: openDecisions }));
+    const ready = promoReady();
+    A.push(mkAct({ id: 'decide', n: '大计', ap: 0, open: true, gold: ready, hint: ready ? '求官的条件齐了' : '求官 · 大宴 · 家谱 · 家训', fn: openDecisions }));
   }
   // the envoy takes a 楚绣 along
   const lb = tab === 'travel' && hasItem('chuxiu') && A.find(a => a.id === 'lobby');
@@ -2673,15 +2687,16 @@ SYS.rows.push(y => {
   const j = W.job, d = j && jobDef(j.id); if (!d) return 0;
   rect(118, y, 59, 9, 'rgba(22,18,26,.75)'); img(ICON.scroll, 119, y);
   const late = !d.dueT && jobLeft(j) <= 1;
-  txt(fitT(d.t + ' ' + (d.prog ? d.prog(j) : jobWhen(j)), 47, 5.5), 129, y + 4.5, 5.5, late ? '#ff9a8a' : '#ffe08a', 'left', null);
+  txt(fitT(d.title + ' ' + (d.prog ? d.prog(j) : jobWhen(j)), 47, 5.5), 129, y + 4.5, 5.5, late ? '#ff9a8a' : '#ffe08a', 'left', null);
   hit(118, y, 59, 9, jobCard);
   return 10;
 });
 // player card: the merit bar (y152–153) and the fame tier after the name; tap the rank line for the 功名 card
 SYS.card.push(p => {
-  const need = RANK_NEED[W.rank + 1], base = RANK_NEED[W.rank] || 0, m = W.merit || 0;
+  const need = nextNeed(), base = RANK_NEED[W.rank] || 0, m = W.merit || 0;
   rect(42, 152, 94, 2, '#3a3040');
   if (need) rect(42, 152, R(94 * clamp((m - base) / (need - base), 0, 1)), 2, '#e8b040');
+  else if (W.rank) rect(42, 152, 94, 2, '#7d5a2e');
   const pt = prestTier(), nx = R(42 + tw(nm(p), 8) + 4);
   if (nx + tw(pt.n, 5.5) < 138) { txt(pt.n, nx, 138.5, 5.5, pt.col, 'left', OUT); hit(nx - 1, 133, tw(pt.n, 5.5) + 3, 10, () => toast('名望 ' + W.prest + ' · ' + pt.n + '：众人好感+' + pt.op + ' · 提亲+' + pt.i * 5 + '%', '#c8e0ff')); }
   hit(40, 143, 54, 12, openCareer);
