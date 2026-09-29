@@ -5775,9 +5775,9 @@ const keqBy2 = () => { const yr = C('yiren'); return alive(yr) && W.kingId !== '
 // 章台: the king asks why a merchant from 赵 should stay (客卿 in 秦; a 舌战, and a lost one waits four seasons)
 EV.keqing2 = () => {
   const k = king(), p = P(), yr = C('yiren'); if (!a2Here() || W.rank !== 1 || !alive(k)) return null;
-  const end = w => { if (w) promote(2, k); else { W.cool.promo = 4; toast(nm(k) + '没有再说话', '#dddddd'); } };
+  const end = w => { if (w) promote(2, k); else { W.cool.promo = 2; toast(nm(k) + '没有再说话', '#dddddd'); } };
   const b1 = stat(p, 3) >= 12 ? 1 : 0, b2 = stat(p, 1) >= 12 ? 1 : 0, sure = alive(yr) && yr !== k && opinion(yr, p) >= 60;
-  const duel = b => () => startDuel('舌战', k, end, { bonus: b, why: '胜：客卿 · 败：四季后再来' });
+  const duel = b => () => startDuel('舌战', k, end, { bonus: b, why: '胜：客卿 · 败：两季后再来' });
   return { title: '章台', who: [k.id], text: nm(k) + '在章台宫召见你。他问：「赵国来的商人，凭什么留在秦国？」',
     opts: [opt('「臣知道赵国的底细。」', duelHint('舌战', k, { bonus: b1 }, b1 ? '谋占先' : ''), duel(b1)),
       opt('「臣能替秦国赚钱。」', duelHint('舌战', k, { bonus: b2 }, b2 ? '政占先' : ''), duel(b2)),
