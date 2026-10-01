@@ -8476,8 +8476,10 @@ function charRow(c, y, fn, extra, info) {
   drawPortrait(c, 12, y + 2, 1);
   const inf = info ? info(c) : c.id !== W.player && alive(c) ? (o => ({ txt: (o > 0 ? '+' : '') + o, col: opCol(o) }))(opinion(c, P())) : null;
   txt(fitT(nm(c), 92, 7.5), 50, y + 10, 7.5, alive(c) ? '#3a2418' : '#6a6058', 'left', null);
-  txt(fitT(`${ageOf(c)}岁 ${c.female ? '女' : '男'} · ${catLook(c).coat}${c.preg && alive(c) ? ' · 有孕' : ''}${extra ? ' · ' + extra : ''}`, 120, 5.5, 1), 50, y + 20, 5.5, '#5a3a20', 'left', null, 1, 1);
-  txt(fitT(traitsOf(c).slice(0, 4).join(' '), 120, 5.5, 1), 50, y + 29, 5.5, LABC, 'left', null, 1, 1);
+  txt(fitT(`${ageOf(c)}岁 ${c.female ? '女' : '男'} · ${catLook(c).coat}${c.preg && alive(c) ? ' · 有孕' : ''}${extra ? ' · ' + extra : ''}`, 86, 5.5, 1), 50, y + 20, 5.5, '#5a3a20', 'left', null, 1, 1);
+  txt(fitT(traitsOf(c).slice(0, 4).join(' '), 86, 5.5, 1), 50, y + 29, 5.5, LABC, 'left', null, 1, 1);
+  // the four stats at a glance (so you can pick a retainer or a match without opening every card)
+  if (alive(c)) for (let i = 0; i < 4; i++) txt(STATN[i] + stat(c, i), 140 + (i & 1) * 16, y + 20 + (i >> 1) * 9, 5.5, STATC[i], 'left', null);
   if (inf && inf.txt) txt(inf.txt, 168, y + 10, 6.5, inf.col || '#3a2418', 'right', null);
   hit(8, y, 164, 34, fn);
 }
