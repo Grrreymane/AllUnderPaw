@@ -7358,8 +7358,26 @@ EV.a3_junhe = () => {
       opt('「迁蜀。」', '全家去蜀地', () => { a3Ban(); a3Resign(); goCity('shu'); A.shu = true; logLine('狸家搬去了蜀地', '#ff9a8a'); }),
       // (arms are decided by who holds the court and the generals, with a little for cunning — not by cunning alone)
       Object.assign(opt('起兵', '你势' + powerOf('you') + ' 王' + powerOf('wang') + ' · 成 ' + R(a3RiseP() * 100) + '% · 败则身死', () => {
-        if (chance(a3RiseP())) { if (W.a2) W.a2.yi = 40; addOp(kg, p, -20); logLine('王上收回了那封信', '#9fe89a'); } else a2Doom('起兵不成，兵败身死'); }, () => powerOf('you') >= 6), { no: () => '势不到 6，起不了兵' })] };
+        if (!chance(a3RiseP())) { a2Doom('起兵不成，兵败身死'); return; }
+        const back = () => { if (W.a2) W.a2.yi = 40; addOp(kg, p, -20); logLine('王上收回了那封信', '#9fe89a'); };
+        // with the court well in hand the palace gates stand open: stop here, or go in
+        if (powerOf('you') >= powerOf('wang') + 2) showCard({ title: '宫门', who: [kg.id], text: '你的人围住了咸阳宫。宫门开着，里面没有人出来。',
+          opts: [opt('「进宫。」', '你做秦王 · ' + nm(kg) + '从此没了消息', () => seizeThrone()), opt('「收兵。王上收回那封信就好。」', '仍做' + RANKS[W.rank] + ' · 忌惮降到 40', back)] });
+        else back(); }, () => powerOf('you') >= 6), { no: () => '势不到 6，起不了兵' })] };
 };
+// you take the throne from whoever sits on it (E3); the story cards that needed him step aside on their own
+function seizeThrone() {
+  const k = king();
+  a2Crown();
+  if (alive(k) && k !== P()) { k.dieT = null; k.immortal = false; die(k, true); }
+  W.kingId = W.player; if (W.a3) W.a3.junhe = W.a3.junhe || W.t;
+}
+// 废立: a standing way to the throne for a 相邦 or 仲父 who holds the court and a general (大计)
+const coupWhy = () => { const y = powerOf('you'), w = powerOf('wang'); return ageOf(P()) < 16 ? '你还没成年' : y <= w ? '势要压过王方（你' + y + ' 王' + w + '）' : !courtSeats().some(x => x.bing && x.lean === 'you') ? '要有一位将军倾向你' : ''; };
+DECISIONS.push({ id: 'coup', show: () => W.act >= 2 && W.t >= 61 && inQin() && W.rank >= 3 && W.rank <= 4 && alive(king()) && king() !== P(), ico: () => ICON.seal,
+  t: '废立', s: () => coupWhy() || '你势' + powerOf('you') + ' 王' + powerOf('wang') + ' · 成 ' + R(a3RiseP() * 100) + '% · 你做秦王', close: true,
+  act: () => mkAct({ id: 'd_coup', n: '办', ap: 0, danger: '败则身死 · 成 ' + R(a3RiseP() * 100) + '%', no: coupWhy,
+    fn: () => { if (coupWhy()) return; if (chance(a3RiseP())) seizeThrone(); else a2Doom('废立不成，死在宫门外'); } }) });
 // the fall of a state, as its card tells it (赵's is 邯郸旧怨)
 EV.a3_fall = e => {
   const k = e && e.k, A = W.a3; if (!A || !A3_REALM[k] || !rFallen(k) || !a3Court()) return null;
