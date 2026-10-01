@@ -7349,14 +7349,16 @@ EV.a3_hezong = () => {
 // 君何功于秦: the letter to an exile in 河南, or to a 仲父 the king fears (忌惮 80)
 const a3JunheDue = () => { const A2 = W.a2, z = C('zheng'); if (!A2 || A2.blood || (z && z.mom === W.player)) return false;
   return (W.city === 'henan' && W.t <= 124 && W.rank >= 2 && W.player === W.a3.exileBy) || (inQin() && W.rank === 4 && W.kingId !== W.player && A2.yi >= 80); };
+const a3RiseP = () => clamp(.35 + .08 * (powerOf('you') - powerOf('wang')) + .015 * stat(P(), 3) + (courtSeats().some(x => x.bing && x.lean === 'you') ? .1 : 0), .05, .9);
 EV.a3_junhe = () => {
   const A = W.a3, p = P(), kg = king(); if (!A || A.junhe || W.act < 3 || !alive(p) || !alive(kg) || kg === p || !a3JunheDue()) return null; A.junhe = W.t;
   const zf = W.a2.zfBy === W.player;
   return { title: '君何功于秦', who: [kg.id], text: '王上来信：「君何功于秦？' + (W.a2.fief ? '秦封君河南，食十万户。' : '') + (zf ? '君何亲于秦？号称仲父。' : '') + '」信的末尾，让你全家迁往蜀地。',
     opts: [opt('饮鸩', '你死 · 狸家保全', () => { logLine('你喝下了那杯酒。狸家保住了', '#ff9a8a'); p.flags.cause = '饮鸩而死'; die(p); }),
       opt('「迁蜀。」', '全家去蜀地', () => { a3Ban(); a3Resign(); goCity('shu'); A.shu = true; logLine('狸家搬去了蜀地', '#ff9a8a'); }),
-      Object.assign(opt('起兵', chkHint(3, 14) + ' · 败则身死', () => {
-        if (chk(3, 14)) { if (W.a2) W.a2.yi = 40; addOp(kg, p, -20); logLine('王上收回了那封信', '#9fe89a'); } else a2Doom('起兵不成，兵败身死'); }, () => powerOf('you') >= 6), { no: () => '势不到 6，起不了兵' })] };
+      // (arms are decided by who holds the court and the generals, with a little for cunning — not by cunning alone)
+      Object.assign(opt('起兵', '你势' + powerOf('you') + ' 王' + powerOf('wang') + ' · 成 ' + R(a3RiseP() * 100) + '% · 败则身死', () => {
+        if (chance(a3RiseP())) { if (W.a2) W.a2.yi = 40; addOp(kg, p, -20); logLine('王上收回了那封信', '#9fe89a'); } else a2Doom('起兵不成，兵败身死'); }, () => powerOf('you') >= 6), { no: () => '势不到 6，起不了兵' })] };
 };
 // the fall of a state, as its card tells it (赵's is 邯郸旧怨)
 EV.a3_fall = e => {
