@@ -8855,37 +8855,115 @@ function sceneCats(tab) {
   }
   return tab === 'market' ? hereList('market') : tab === 'court' ? hereList('palace') : [];
 }
+// ---------------------------------------------------------- the map on the 行 tab
+// The seven states as painted regions (nearest-seed with a little noise for the borders), the cities the house can live
+// in as dots. It is the same rules with a face on them: tap a city to move there (迁居), tap a state in act three to
+// march on it or work against it (the 天下 list).
+const MAP_ST = {
+  qin: { n: '秦', c: '#5a3a44', lx: 30, ly: 56, seeds: [[16, 46], [44, 66], [30, 90], [14, 106], [52, 48]] },
+  zhao: { n: '赵', c: '#4f78a8', lx: 86, ly: 36, seeds: [[78, 36], [104, 46]] },
+  yan: { n: '燕', c: '#7a6aa8', lx: 146, ly: 22, seeds: [[134, 20], [160, 26]] },
+  qi: { n: '齐', c: '#3f8a5e', lx: 156, ly: 54, seeds: [[152, 52], [168, 62]] },
+  wei: { n: '魏', c: '#c29a52', lx: 132, ly: 76, seeds: [[98, 70], [124, 72]] },
+  han: { n: '韩', c: '#8a8c96', lx: 80, ly: 86, seeds: [[76, 82]] },
+  chu: { n: '楚', c: '#b5503a', lx: 132, ly: 100, seeds: [[92, 102], [130, 96], [164, 88], [60, 110]] },
+  hu: { c: '#6f7a5a', seeds: [[24, 10], [70, 8], [108, 12]] },
+  sea: { c: '#5a86a8', seeds: [[182, 40], [184, 74], [182, 104]] },
+};
+const MAP_CITY = { xianyang: [40, 72], handan: [96, 52], daliang: [100, 66], henan: [70, 68], shu: [18, 102] };
+const MAPC = new Map();
+const mapFallen = k => typeof rFallen === 'function' && rFallen(k);
+function mapImg() {
+  const key = Object.keys(MAP_ST).map(k => mapFallen(k) ? 1 : 0).join('');
+  let c = MAPC.get(key); if (c) return c;
+  c = mk(180, 112); const x2 = c.getContext('2d'), own = new Array(180 * 112);
+  const S = []; for (const k in MAP_ST) for (const [sx, sy] of MAP_ST[k].seeds) S.push([sx, sy, k]);
+  for (let y = 0; y < 112; y++) for (let x = 0; x < 180; x++) {
+    let best = 1e9, bk = 'hu';
+    for (const [sx, sy, k] of S) { const d = Math.hypot(x - sx, (y - sy) * 1.15) + vnoise(x, y, hashStr(k) & 255, 9) * 12; if (d < best) { best = d; bk = k; } }
+    own[y * 180 + x] = bk;
+  }
+  const col = k => mapFallen(k) ? mixHex(MAP_ST[k].c, MAP_ST.qin.c, .72) : MAP_ST[k].c;
+  for (let y = 0; y < 112; y++) for (let x = 0; x < 180; x++) {
+    const k = own[y * 180 + x], edge = (x < 179 && own[y * 180 + x + 1] !== k) || (y < 111 && own[(y + 1) * 180 + x] !== k);
+    x2.fillStyle = edge ? shade(col(k), -38) : hash2(x, y, 5) < .08 ? shade(col(k), 10) : col(k); x2.fillRect(x, y, 1, 1);
+  }
+  if (MAPC.size > 12) MAPC.clear();
+  MAPC.set(key, c); return c;
+}
+function mapMove(k) {
+  const nmC = CITY[k] ? CITY[k].n : '';
+  if (k === W.city) { toast('狸家就住在' + nmC, '#f2ead4'); return; }
+  if (typeof a3MoveAct !== 'function' || W.act < 3) { toast(nmC + ' · 眼下走不开', '#dddddd'); return; }
+  if (W.kingId === W.player) { toast('王不离咸阳', '#dddddd'); return; }
+  const a = a3MoveAct(), why = a.no ? a.no() : '';
+  if (why) { toast(why, '#ff9a8a'); return; }
+  if (k === 'xianyang' && a3Banned()) { toast('王上不许你回咸阳', '#ff9a8a'); return; }
+  if (!a3Cities().includes(k)) { toast(nmC + '没有狸家的落脚处', '#dddddd'); return; }
+  pickOpt('搬去' + nmC + '？', [{ n: '搬家', s: (a.danger ? a.danger + ' · ' : '') + A3_MOVE[k] + ' · 八季内不能再搬', style: a.danger ? 'red' : 'jade', fn: () => a3MoveTo(k) }]);
+}
+function mapState(k) {
+  const D = MAP_ST[k];
+  if (k === 'qin') { toast('秦' + (W.a3 && typeof realmOn === 'function' && realmOn() ? ' · 国力 ' + W.a3.guo : ''), '#f2ead4'); return; }
+  if (typeof realmOn !== 'function' || !realmOn()) { toast(mapFallen(k) ? D.n + ' · 已灭' : D.n + '国', '#f2ead4'); return; }
+  if (mapFallen(k)) { toast(D.n + ' · 已灭', '#dddddd'); return; }
+  if (a3Court()) a3Menu(k); else toast(D.n + ' · 实力 ' + W.realm[k].s + (a3Role() === 'low' ? ' · 客卿以上才能议天下事' : ' · 人不在秦国，只能看着'), '#dddddd');
+}
+function drawMap() {
+  g.drawImage(mapImg(), 0, 17);
+  const live = typeof realmOn === 'function' && realmOn();
+  for (const k in MAP_ST) {
+    const D = MAP_ST[k]; if (!D.n) continue;
+    const f = mapFallen(k), x = D.lx, y = 17 + D.ly;
+    txt(D.n, x, y, 9, f ? '#b0a8a8' : '#fff6dc', 'center', OUT);
+    if (live && k !== 'qin' && !f) txt(W.realm[k].s, x, y + 9, 6, '#ffe08a', 'center', OUT);
+    if (live && k === 'qin') txt(W.a3.guo, x, y + 9, 6, '#ffe08a', 'center', OUT);
+    hit(x - 13, y - 8, 26, 22, () => mapState(k));
+  }
+  for (const k in MAP_CITY) {
+    if (!CITY[k]) continue;
+    const [cx, cy0] = MAP_CITY[k], cy = 17 + cy0, here = k === W.city;
+    if (here) { g.globalAlpha = .45 + .4 * Math.abs(Math.sin(T * 2)); rect(cx - 4, cy - 4, 9, 9, PAL.gold); g.globalAlpha = 1; }
+    rect(cx - 2, cy - 2, 5, 5, OUT); rect(cx - 1, cy - 1, 3, 3, here ? PAL.gold : '#f2ead4');
+    txt(CITY[k].n, cx + 5, cy + 1, 5.5, here ? '#ffe08a' : '#f2ead4', 'left', OUT);
+    hit(cx - 7, cy - 7, 30, 15, () => mapMove(k));
+  }
+  if (W.act >= 3) txt(live ? '点城迁居 · 点国出手' : '点城迁居', 176, 124, 5.5, '#f2ead4', 'right', OUT);
+}
+
 function drawCity() {
   if (!TABS[W.loc]) W.loc = 'home';
   const tab = W.loc, p = P();
   TANCH = [64, 1];   // notices go under the widget (and its rows), over the backdrop
   if (tab === 'people') drawPeople(); else {
     // backdrop + the cats you can see here
-    g.drawImage(scene(TABS[tab].scene), 0, 17);
+    const isMap = tab === 'travel';
+    if (isMap) drawMap(); else g.drawImage(scene(TABS[tab].scene), 0, 17);
     runSys('scene', tab);
     const an = areaName(tab);
     txt(an, 5, 25, 8, '#fff6dc', 'left', OUT);
     if (siegeOn()) chip('围城', R(5 + tw(an, 8) + 4), 20, '#b0301f', () => toast('围城：收入减半，商队出不了城', '#ff9a8a'));
     const goal = objective(); if (goal) wrapGoal(goal, 110, 5.5).forEach((l, i) => txt(l, 5, 36 + i * 7, 5.5, '#ffe08a', 'left', OUT));
-    const all = sceneCats(tab), here = all.slice(0, 7), more = all.length - here.length;
+    const all = isMap ? [] : sceneCats(tab), here = all.slice(0, 7), more = all.length - here.length;
     const sp = Math.min(24, 160 / Math.max(1, here.length + 1 + (more ? 1 : 0)));
     const drawOne = (c, x, yb) => { g.drawImage(mini(c), R(x - 8), R(yb - 22)); hit(x - 9, yb - 23, 18, 24, () => openSheet(c.id)); };
-    drawOne(p, 18, 124);
+    if (!isMap) drawOne(p, 18, 124);
     here.forEach((c, i) => drawOne(c, 40 + i * sp + (i & 1) * 2, 120 + (i & 1) * 4));
     if (more) {
       const mx = R(40 + here.length * sp + 4);
       txt('+' + more, mx, 110, 6.5, '#fff6dc', 'center', OUT);
       hit(mx - 8, 100, 17, 22, tab === 'home' ? () => { openFamily(); top().list = true; } : () => { W.loc = 'people'; PEOPLE_SCR.key = ''; });
     }
-    g.drawImage(ICON.ap, 15, 93 + Math.sin(T * 3) * 1.2);
+    if (!isMap) g.drawImage(ICON.ap, 15, 93 + Math.sin(T * 3) * 1.2);
     // top-right widget (118,19,59,≈45): Act 1's race first, then whichever system has something to show;
     // under it (from y 64, or 19 with no widget) the systems' rows (SYS.rows), and the notices below those. The rows stop
     // at a floor (lim) so they never cover the cats in the scene; what doesn't fit, a system folds into one row.
-    const drewW = raceWidget() || SYS.widget.some(f => f()), wy0 = drewW ? 64 : 19, lim = drewW ? 94 : 60;
+    // (the map keeps its whole face: no widget or rows over the north-east)
+    const drewW = !isMap && (raceWidget() || SYS.widget.some(f => f())), wy0 = drewW ? 64 : 19, lim = drewW ? 94 : 60;
     let wy = wy0;
-    for (const f of SYS.rows) wy += f(wy, lim) || 0;
+    if (!isMap) for (const f of SYS.rows) wy += f(wy, lim) || 0;
     // with rows on the right (an errand, schemes) the notices keep left of them instead of sliding down onto the card
-    TANCH = wy > wy0 ? [66, 1, 58, 112] : [Math.max(64, wy + 2), 1];
+    TANCH = isMap ? [126, -1] : wy > wy0 ? [66, 1, 58, 112] : [Math.max(64, wy + 2), 1];   // (on the map the notices rise from its foot)
     // player card. Slots the systems draw into (SYS.card, after this): merit bar y152–153 x42–136,
     // xp bars y166–167 (20 px under each stat), button slot B (140,151,36,14)
     rect(0, 129, W_, 191, '#2a2030'); rect(0, 129, W_, 1, OUT);
