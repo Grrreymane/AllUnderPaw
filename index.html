@@ -824,7 +824,15 @@ function addHealth(c, n) { if (c) c.health = clamp((c.health || 0) + n, 0, 100);
 // news worth remembering goes to the 近况 log (last 40 lines) and shows as a notice (quiet: log only)
 // (CATCHUP: an old save is catching up on history's overdue deaths, histCatchUp: nothing is said line by line)
 let CATCHUP = false;
-function logLine(s, col, quiet) { if (CATCHUP) return; W.log = W.log || []; W.log.push(col ? { t: W.t, s, col } : { t: W.t, s }); if (W.log.length > 40) W.log.splice(0, W.log.length - 40); if (!quiet) toast(s, col || '#f2ead4'); }
+// What happened to a cat, kept on the cat (the last 8): the cards it was part of and the news that named it.
+function note(c, s, t) { if (!c || !s) return; const L = c.log || (c.log = []), tt = t === undefined ? W.t : t; if (L.length && L[L.length - 1][1] === s) return; L.push([tt, s]); if (L.length > 8) L.shift(); }
+// (only the cats the story or you have to do with, and the name list is built once a season)
+let NOTE_K = -1, NOTE_L = [];
+function noteNamed(s) {
+  if (NOTE_K !== W.t * 1000 + W.nid) { NOTE_K = W.t * 1000 + W.nid; NOTE_L = Object.values(W.chars).filter(c => c.dead === null && c.id !== W.player && (c.hist || c.house || c.rel[W.player])).map(c => [nm(c), c]).filter(x => x[0].length >= 2); }
+  for (const [n, c] of NOTE_L) if (s.includes(n)) note(c, s);
+}
+function logLine(s, col, quiet) { if (CATCHUP) return; noteNamed(s); W.log = W.log || []; W.log.push(col ? { t: W.t, s, col } : { t: W.t, s }); if (W.log.length > 40) W.log.splice(0, W.log.length - 40); if (!quiet) toast(s, col || '#f2ead4'); }
 // energy a head of house gets each season (a head under 16 is ruled by a regent: 1 until twelve, then at most 2; see growth's 家法)
 const apMax = p => {
   if (!p) return 2;
@@ -8246,6 +8254,7 @@ function pumpQueue() {
 function choose(m, o) {
   if (o.ok && !o.ok()) { SFX.no(); toast((o.no && o.no()) || '条件不够', '#ff9a8a'); return; }
   MODAL.splice(MODAL.indexOf(m), 1);
+  for (const id of m.e.who || []) if (id !== W.player) note(C(id), m.e.title + '：' + o.t);
   o.fx && o.fx();
   if (m.e.post) m.e.post();
   saveGame();
@@ -8344,6 +8353,14 @@ function actBtn(a, x, y, w, h, o) {
 }
 
 // ---------------------------------------------------------- character card
+// an office at the 秦 court outranks the station a cat was born to (吕不韦 the 商贾 becomes 相邦)
+function officeOf(c) {
+  const A = W && W.a2; if (!A || !c || !alive(c) || !W.flags.act1Done) return '';
+  const is = v => v === c.id || (v === 'lv' && c.id === 'lv');
+  if (is(A.zhongfu)) return '仲父'; if (is(A.xiang)) return '相邦';
+  if (c.id === 'lv') return A.lvDown ? '失势' : cityOf(c) === 'xianyang' ? '客卿' : '';
+  return '';
+}
 const ROLEN = { ruler: '国君', noble: '贵族', minister: '重臣', shi: '士', hostage: '质子', general: '将军', merchant: '商贾', commoner: '平民', dancer: '舞姬' };
 const SCN_LOCS = new Set(['home', 'market', 'hostage', 'lvfu', 'tavern', 'pingyuan', 'palace', 'gate']);
 // where a cat is, in words: the city when it's in another one, else the place in town
@@ -8387,7 +8404,7 @@ function drawSheet(m) {
   txt(nm(c), 80, 32, fitSize(nm(c), 68 - nPip * 6, 10), '#3a2418', 'left', null);
   const L = catLook(c), rt = relTo(c);
   txt(`${ageOf(c)}岁 · ${c.female ? '女' : '男'} · ${L.coat}`, 80, 45, 6, '#5a3a20', 'left', null, 1, 1);
-  const role = me ? RANKS[W.rank] : ROLEN[c.role] || '';
+  const role = me ? RANKS[W.rank] : officeOf(c) || ROLEN[c.role] || '';
   const rl = [c.house === 'li' ? '狸氏' : c.state + '国', W.ret.includes(c.id) ? '门客' : role, rt ? '你的' + rt : '',
     c.dead !== null ? '已故' : away ? (c.loc === 'away' ? LOCN.away : '在' + placeOf(c)) : ''].filter(Boolean).join(' · ');
   txt(rl, 80, 55, fitSize(rl, 92, 6), rt ? '#94562f' : '#6a4a30', 'left', null);
@@ -9044,6 +9061,11 @@ function peopleMarks(c, y, jw) {
 // the 人 tab: everyone in town in one list; what you can do with them lives on their card
 const PEOPLE_G = ['亲友', '权贵', '士', '百姓'];
 let PEOPLE_F = 0;   // which group the 人 list shows (0 = all, with headings)
+// 往事: a row on every card that has a past; tap it for the list
+SYS.sheet.push((c, rows) => {
+  const L = c.log; if (!L || !L.length) return;
+  rows.push({ chip: '往事', col: '#6a5a4a', text: L[L.length - 1][1] + ' ›', fn: () => openList(nm(c) + ' · 往事', () => L.slice().reverse().map(([t, x]) => ({ t: x, s: yearTxt(t) + SEASON[t % 4] }))) });
+});
 function drawPeople() {
   rect(0, 17, W_, 277, '#2a2030');
   const all = townsfolk(), far = all.filter(farCadet), p = P();
@@ -9052,7 +9074,7 @@ function drawPeople() {
   // the chips above the list show one group at a time
   const seatSet = typeof courtSeats === 'function' && W.a2 && W.city === 'xianyang' && W.act >= 2 ? new Set(courtSeats().map(s => s.c)) : null;
   const grp = c => relTo(c) || c.house === 'li' || (c.rel[p.id] || {}).tag === 'friend' || (p.rel[c.id] || {}).tag === 'friend' ? 0   // (a 宿敌 stays in his own group, marked 敌)
-    : (seatSet && seatSet.has(c)) || ['ruler', 'noble', 'general', 'minister', 'hostage'].includes(c.role) || ['yiren', 'lv', 'zhaoji'].includes(c.id) ? 1 : c.role === 'shi' ? 2 : 3;
+    : (seatSet && seatSet.has(c)) || ['ruler', 'noble', 'general', 'minister', 'hostage'].includes(c.role) || (!W.flags.act1Done && ['yiren', 'lv', 'zhaoji'].includes(c.id)) || (officeOf(c) && officeOf(c) !== '失势') ? 1 : c.role === 'shi' ? 2 : 3;
   const near = all.filter(c => !far.includes(c)), G = [[], [], [], []];
   for (const c of near) G[grp(c)].push(c);
   if (far.length) G[0].push({ fold: far });
@@ -9081,7 +9103,7 @@ function drawPeople() {
       return;
     }
     const s = seats && seats.get(c), lk = s && s.lean, head = s && lk && lk !== 'you' && LEAD[lk].cat() === c;
-    charRow(c, y, () => openSheet(c.id), (c.house === 'li' ? '狸氏 · ' : '') + (s ? (head ? (lk === 'wang' ? '王' : lk === 'zong' ? '宗室之首' : LEAD[lk].n + '系之首') : lk ? (lk === 'you' ? '你的人' : '倾向' + LEAD[lk].n) : '朝中中立') : (LOCN[c.loc] || '') + ' · ' + (GROUPN[c.role] || '')));
+    charRow(c, y, () => openSheet(c.id), (c.house === 'li' ? '狸氏 · ' : '') + (s ? (head ? (lk === 'wang' ? '王' : lk === 'zong' ? '宗室之首' : LEAD[lk].n + '系之首') : lk ? (lk === 'you' ? '你的人' : '倾向' + LEAD[lk].n) : '朝中中立') : (LOCN[c.loc] || '') + ' · ' + (officeOf(c) || GROUPN[c.role] || '')));
     // (a seat at court: a square in its leader's colour, hollow while neutral)
     if (s) { rect(5, y + 27, 5, 5, lk ? LEAD[lk].ink : '#6a6268'); rect(6, y + 28, 3, 3, lk ? LEAD[lk].col : '#e8d4a8'); }
     peopleMarks(c, y, jw);
