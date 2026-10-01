@@ -5561,7 +5561,10 @@ function aiCourt() {
     if (inQin() && W.rank >= 1) {
       let d = (powerOf('you') >= 6 ? 1 : 0) + (W.rank === 4 ? 1 : 0) + (S.some(s => s.bing && s.lean === 'you') ? 1 : 0);
       if (q && q.lov.includes(W.player) && W.secrets.some(s => s.type === 'affair' && [s.subj, s.other].includes(q.id) && [s.subj, s.other].includes(W.player) && knows(s, 'zheng'))) d += 2;
-      if (A.taught >= W.t - 1 || opinion(z, p) >= 60) d--;
+      // (the fear builds every other season; teaching him and his liking you each take a point off, every season)
+      if (W.t % 2) d = 0;
+      if (A.taught >= W.t - 1) d--;
+      if (opinion(z, p) >= 60) d--;
       A.yi = clamp(A.yi + d, 0, 100);
     }
   }
@@ -5940,10 +5943,10 @@ const zhengKing = () => W.kingId === 'zheng' && alive(C('zheng'));
 const minorNo = () => ageOf(P()) < 16 ? '年纪还小' : '';
 function memoAct() {
   const dc = 8 + 2 * W.rank, k = king();
-  return mkAct({ id: 'memorial', kind: 'memorial', n: '上朝进言', ap: 1, hint: chkHint(1, dc) + ' · 功+2 望+3 · ' + (zhengKing() ? '王权+3 ' + k.name + '+2' : (k ? nm(k) : '王') + '+6'),
+  return mkAct({ id: 'memorial', kind: 'memorial', n: '上朝进言', ap: 1, hint: chkHint(1, dc) + ' · 功+2 望+3 · ' + (zhengKing() ? '王权+3 忌惮-1' : (k ? nm(k) : '王') + '+6'),
     no: () => minorNo() || (W.rank < 1 ? '要先当上舍人' : W.cool.memo ? '这季说过了' : !alive(king()) ? '朝中无王' : ''),
     fn: () => { const k2 = king(); if (!k2 || !spendAp(1)) return; W.cool.memo = 1; const ok = chk(1, dc);
-      if (ok) { if (zhengKing()) { W.a2.wang = Math.min(100, W.a2.wang + 3); addOp(k2, P(), 2); } else addOp(k2, P(), 6); addPrest(3); addMerit(2, '进言'); toast(nm(k2) + '点了点头', '#9fe89a'); } else { addOp(k2, P(), -2); toast('没人接你的话', '#dddddd'); }
+      if (ok) { if (zhengKing()) { W.a2.wang = Math.min(100, W.a2.wang + 3); addOp(k2, P(), 2); W.a2.yi = Math.max(0, W.a2.yi - 1); } else addOp(k2, P(), 6); addPrest(3); addMerit(2, '进言'); toast(nm(k2) + '点了点头', '#9fe89a'); } else { addOp(k2, P(), -2); toast('没人接你的话', '#dddddd'); }
       didAct('memorial', k2, 1, ok); } });
 }
 function recAct() {
@@ -6229,8 +6232,8 @@ SYS.acts.push((c, A) => {
   // the young king's lessons: 相邦 and 仲父 (or his 傅) teach him
   const tg = () => { const o = opinion(c, p); return o < 40 ? 5 : o < 70 ? 2 : 0; };
   if (c.id === 'zheng' && reach(c) && ageOf(c) < 22 && (W.rank >= 3 || W.a2.fu)) A.push(mkAct({ id: 'teachKing', kind: 'teachKing', n: c.role === 'ruler' ? '教导王上' : '教导' + nm(c), ap: 1, grp: '友',
-    hint: (tg() ? nm(c) + '+' + tg() + ' · ' : '') + '忌惮-2', no: () => minorNo() || (W.a2.taught >= W.t - 1 ? '刚教过，隔一季再教' : ''),
-    fn: () => { if (!spendAp(1)) return; W.a2.taught = W.t; addOp(c, p, tg()); W.a2.yi = Math.max(0, W.a2.yi - 2);
+    hint: (tg() ? nm(c) + '+' + tg() + ' · ' : '') + '忌惮-4', no: () => minorNo() || (W.a2.taught >= W.t - 1 ? '刚教过，隔一季再教' : ''),
+    fn: () => { if (!spendAp(1)) return; W.a2.taught = W.t; addOp(c, p, tg()); W.a2.yi = Math.max(0, W.a2.yi - 4);
       const i = bestSt(p); if (ageOf(c) < 16) { c.edu = c.edu || [0, 0, 0, 0]; c.edu[i]++; } react(c, 'teach', true, LESSON[i]); didAct('teachKing', c, i, true); } }));
 });
 SYS.sheet.push((c, rows) => {
