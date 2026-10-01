@@ -9051,7 +9051,7 @@ function drawPeople() {
   // four groups, each under its own heading: yours (kin, friends, rivals), the great, the 士, the townsfolk;
   // the chips above the list show one group at a time
   const seatSet = typeof courtSeats === 'function' && W.a2 && W.city === 'xianyang' && W.act >= 2 ? new Set(courtSeats().map(s => s.c)) : null;
-  const grp = c => relTo(c) || c.house === 'li' || (c.rel[p.id] || {}).tag || (p.rel[c.id] || {}).tag ? 0
+  const grp = c => relTo(c) || c.house === 'li' || (c.rel[p.id] || {}).tag === 'friend' || (p.rel[c.id] || {}).tag === 'friend' ? 0   // (a 宿敌 stays in his own group, marked 敌)
     : (seatSet && seatSet.has(c)) || ['ruler', 'noble', 'general', 'minister', 'hostage'].includes(c.role) || ['yiren', 'lv', 'zhaoji'].includes(c.id) ? 1 : c.role === 'shi' ? 2 : 3;
   const near = all.filter(c => !far.includes(c)), G = [[], [], [], []];
   for (const c of near) G[grp(c)].push(c);
