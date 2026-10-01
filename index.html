@@ -5841,11 +5841,11 @@ EV.tanhe = e => {
   const seal = () => { if (k === 'lv' && A.xiang === 'you' && W.rank === 3 && powerOf('lv') > powerOf('you') && chance(.35)) { A.xiang = 'lv'; W.rank = 2; PORT.clear(); MINI.clear(); logLine('相印回到了吕不韦手里', '#ff9a8a'); } };
   const him = ta(L);
   return { title: '弹劾', who: [L.id], text: (k === 'chu' && !e.yi ? nm(L) : '') + t0,
-    opts: [opt('「当庭辩驳。」', duelHint('舌战', L, null, '胜：' + him + '的人冷了 · 败：名望-5'), () => startDuel('舌战', L, w => { if (w) cut(k, L, 10); else { cut('you', p, 10); addPrest(-5); seal(); } },
+    opts: [opt('「当庭辩驳。」', duelHint('舌战', L, null, '胜：' + him + '的朝臣离心 · 败：你的离心，名望-5'), () => startDuel('舌战', L, w => { if (w) cut(k, L, 10); else { cut('you', p, 10); addPrest(-5); seal(); } },
         { why: '胜：' + him + '的一个人冷了 · 败：你的一个人冷了 · 名望-5' })),
       opt('「送礼平息。」', '鱼干-60 · ' + nm(L) + '+10', () => { addFish(-60); addOp(L, p, 10); }, () => W.fish >= 60),
       secs.length ? opt('「拿出' + him + '的把柄。」', fitT('弹劾：' + secretText(secs[0]), 140, 5.5, 1), () => exposeSec(secs[0], W.player)) : null,
-      e.yi && W.kingId === 'zheng' ? opt('「臣的门客，请王上收编。」', '王权+10 · 忌惮-10 · 你的一人归王', () => { wangAdd(10); yiAdd(-10); swingTo('wang', 1, 'you', true); }) : null,
+      e.yi && W.kingId === 'zheng' ? opt('「臣的门客，请王上收编。」', '王权+10 · 忌惮-10 · 你的一位朝臣改投王上', () => { wangAdd(10); yiAdd(-10); swingTo('wang', 1, 'you', true); }) : null,
       opt('「让' + him + '闭嘴。」', withTip(chkHint(3, 12) + ' · 结仇', '仁厚'), () => {
         if (chk(3, 12)) { addOp(L, p, -30); rivalOf(L, p); cut(k, L, 20); addStress(p, '仁厚'); toast(nm(L) + '的人不再说话了', '#9fe89a'); } else { addPrest(-5); addOp(L, p, -10); } }, null, '狠辣')].filter(Boolean) };
 };
@@ -6538,7 +6538,7 @@ EV.shiliu = () => {
     text: `${nm(z)}十六了。今天议事，他第一次开口：「这件事，为什么没有人问寡人？」满堂的人都看向你。`,
     opts: [opt('「王上问得好，请王上定。」', '王权+5 · 王上+10 · 忌惮-5', () => { wangAdd(5); addOp(z, p, 10); yiAdd(-5); }),
       opt('「王上还小，臣替王上看着。」', '王权-5 · 王上-10 · 忌惮+10', () => { wangAdd(-5); addOp(z, p, -10); yiAdd(10); }),
-      opt('「以后，臣先禀王上。」', '王权+10 · 王上+15 · 你的一人归王', () => { wangAdd(10); addOp(z, p, 15); swingTo('wang', 1, 'you', true); })] };
+      opt('「以后，臣先禀王上。」', '王权+10 · 王上+15 · 你的一位朝臣改投王上', () => { wangAdd(10); addOp(z, p, 15); swingTo('wang', 1, 'you', true); })] };
 };
 EV.hezong = () => {
   const mg = qinCat('menga'), p = P(); if (!a2Here() || W.rank < 1) return null;
