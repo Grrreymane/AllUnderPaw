@@ -879,6 +879,18 @@ function marry(a, b) {
 }
 // where a new couple lives: the head's and the heir's spouses move into 狸宅; any other 狸 sets up a cadet house in town (分户),
 // or follows a spouse who is somebody important
+// A famous spouse moves into 狸宅 too (so they are there to keep company, sit on the council and raise the children),
+// unless they rule, are a hostage, or live in another city.
+const histMovesIn = (o, k) => o.role !== 'ruler' && o.role !== 'hostage' && !['yiren', 'zheng'].includes(o.id) && sameCity(o, k);
+function moveIn(o) {
+  const was = o.loc;
+  o.loc = 'home'; if (o.house !== 'li') o.house = 'in'; delete o.flags.branch; delete o.flags.left;
+  // the 狸 children living with them come along
+  for (const id of o.kids) { const k = C(id); if (alive(k) && k.house === 'li' && ageOf(k) < 16 && k.loc === was && !k.flags.branch) k.loc = 'home'; }
+}
+// (saves from before this rule: the head's famous spouse still lives across town)
+function spouseHomeFix() { const p = P(), o = p && p.sp && C(p.sp); if (alive(p) && alive(o) && o.hist && o.loc !== 'home' && p.loc === 'home' && histMovesIn(o, p)) moveIn(o); }
+SYS.load.push(spouseHomeFix);
 function wedHome(a, b) {
   // (the heir: the one with the gold 嗣 tag, which may be a sibling or nephew when the head has no children)
   const hn = typeof heirNow === 'function' ? heirNow() : null;
@@ -886,7 +898,7 @@ function wedHome(a, b) {
   const K = keep(a) ? a : keep(b) ? b : null;
   if (K) {
     const o = K === a ? b : a;
-    if (!o.hist) { o.loc = 'home'; if (o.house !== 'li') o.house = 'in'; delete o.flags.branch; delete o.flags.left; }
+    if (!o.hist || histMovesIn(o, K)) moveIn(o);
     return;
   }
   if (a.house !== 'li' && b.house !== 'li') return;
