@@ -3120,7 +3120,7 @@ function adviseTo() { const pa = patron(); return pa && reach(pa) ? pa : alive(c
 const adviseSt = () => stat(P(), 1) >= stat(P(), 3) ? 1 : 3;
 function adviseAct() {
   const st = adviseSt(), t = adviseTo();
-  return mkAct({ id: 'advise', kind: 'advise', n: '献策', ap: 1, hint: (t ? '献给' + nm(t) + ' · ' : '') + chkHint(st, 10) + ' · 功+4',
+  return mkAct({ id: 'advise', kind: 'advise', n: '献策', ap: 1, hint: chkHint(st, 10) + ' · 功+4 望+6' + (t ? ' · 献给' + nm(t) : ''),
     no: () => W.rank < 1 ? '要先当上舍人' : W.cool.advise ? '刚献过策，再等 ' + W.cool.advise + ' 季' : !adviseTo() ? '没有人可献策' : '',
     fn: () => {
       const to = adviseTo(); if (!to || !spendAp(1)) return;
@@ -5938,7 +5938,7 @@ const zhengKing = () => W.kingId === 'zheng' && alive(C('zheng'));
 const minorNo = () => ageOf(P()) < 16 ? '年纪还小' : '';
 function memoAct() {
   const dc = 8 + 2 * W.rank, k = king();
-  return mkAct({ id: 'memorial', kind: 'memorial', n: '上朝进言', ap: 1, hint: chkHint(1, dc) + ' · 功+2 · ' + (zhengKing() ? '王权+3 ' + k.name + '+2' : (k ? nm(k) : '王') + '+6') + ' · 名望+3',
+  return mkAct({ id: 'memorial', kind: 'memorial', n: '上朝进言', ap: 1, hint: chkHint(1, dc) + ' · 功+2 望+3 · ' + (zhengKing() ? '王权+3 ' + k.name + '+2' : (k ? nm(k) : '王') + '+6'),
     no: () => minorNo() || (W.rank < 1 ? '要先当上舍人' : W.cool.memo ? '这季说过了' : !alive(king()) ? '朝中无王' : ''),
     fn: () => { const k2 = king(); if (!k2 || !spendAp(1)) return; W.cool.memo = 1; const ok = chk(1, dc);
       if (ok) { if (zhengKing()) { W.a2.wang = Math.min(100, W.a2.wang + 3); addOp(k2, P(), 2); } else addOp(k2, P(), 6); addPrest(3); addMerit(2, '进言'); toast(nm(k2) + '点了点头', '#9fe89a'); } else { addOp(k2, P(), -2); toast('没人接你的话', '#dddddd'); }
@@ -8352,7 +8352,9 @@ function actBtn(a, x, y, w, h, o) {
   if (a.fish) { bx -= 2; txt(a.fish, bx, y + 5.5, 5.5, '#ffe08a', 'right', OUT); bx -= tw(String(a.fish), 5.5) + 16; img(ICON.fish, bx, y + 2); }
   const ls = sub ? 7 : 7.5;
   txt(a.n, x + 6, sub ? y + h / 2 - 3.5 : y + h / 2 - .5, fitSize(a.n, bx - x - 9, ls), '#ffffff', 'left', OUT);
-  if (sub) txt(fitT(sub, w - 12, 5.5, 1), x + 6, y + h / 2 + 4.5, 5.5, subCol(style), 'left', null, 1, 1);
+  // a hint too long for the button first loses its ' · ' separators, then shrinks a little, and only then is cut
+  if (sub) { let hs = sub, fs = 5.5; if (tw(hs, fs, 1) > w - 12) hs = hs.replace(/ · /g, ' '); if (tw(hs, fs, 1) > w - 12) fs = 5;
+    txt(fitT(hs, w - 12, fs, 1), x + 6, y + h / 2 + 4.5, fs, subCol(style), 'left', null, 1, 1); }
   hit(x, y, w, h, () => { if (!st.on) { SFX.no(); toast(st.why || '现在做不了', '#ff9a8a'); return; } runAct(a, o); });
 }
 
@@ -8510,9 +8512,11 @@ function charRow(c, y, fn, extra, info) {
   const inf = info ? info(c) : c.id !== W.player && alive(c) ? (o => ({ txt: (o > 0 ? '+' : '') + o, col: opCol(o) }))(opinion(c, P())) : null;
   txt(fitT(nm(c), 46, 7.5), 50, y + 10, 7.5, alive(c) ? '#3a2418' : '#6a6058', 'left', null);
   // the four stats at a glance, on the name line (so you can pick a retainer or a match without opening every card)
-  if (alive(c)) for (let i = 0; i < 4; i++) txt(STATN[i] + stat(c, i), 98 + i * 13.5, y + 10, 5.5, STATC[i], 'left', null);
+  // (a long note on the right, as in the court list, sends them down beside the traits)
+  const low = !!(inf && inf.txt && 168 - tw(String(inf.txt), 6.5) < 153);
+  if (alive(c)) for (let i = 0; i < 4; i++) txt(STATN[i] + stat(c, i), (low ? 116 : 98) + i * 13.5, y + (low ? 29 : 10), 5.5, STATC[i], 'left', null);
   txt(fitT(`${ageOf(c)}岁 ${c.female ? '女' : '男'} · ${catLook(c).coat}${c.preg && alive(c) ? ' · 有孕' : ''}${extra ? ' · ' + extra : ''}`, 120, 5.5, 1), 50, y + 20, 5.5, '#5a3a20', 'left', null, 1, 1);
-  txt(fitT(traitsOf(c).slice(0, 4).join(' '), 120, 5.5, 1), 50, y + 29, 5.5, LABC, 'left', null, 1, 1);
+  txt(fitT(traitsOf(c).slice(0, 4).join(' '), low ? 62 : 120, 5.5, 1), 50, y + 29, 5.5, LABC, 'left', null, 1, 1);
   if (inf && inf.txt) txt(inf.txt, 168, y + 10, 6.5, inf.col || '#3a2418', 'right', null);
   hit(8, y, 164, 34, fn);
 }
