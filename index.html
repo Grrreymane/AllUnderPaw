@@ -2262,7 +2262,9 @@ function gainXp(c, i, n) {
 }
 
 // ---------------------------------------------------------- 拜师: four masters, one stat each; kids can be sent too
-const MASTERS = { lzl: 2, guozong: 1, lianpo: 0, yuqing: 3, limu: 0 };
+const MASTERS = { lzl: 2, guozong: 1, lianpo: 0, yuqing: 3, limu: 0,
+  // 咸阳's teachers
+  caize: 2, lisi: 1, menga: 0, wangjian: 0, fanju: 3, chengping: 3, weiliao: 3 };
 // 李牧: 赵's other great general, home from 雁门 after 长平 (a second 武 teacher who outlives 廉颇); 郭开's slander kills him
 HISTD.limu = 132;
 HIST_NEXT.limu = () => logLine('赵王迁' + (alive(C('guokai')) ? '听信郭开，' : '') + '杀了李牧。', '#c8e0ff'); HIST_GONE.add('limu');
@@ -2665,7 +2667,7 @@ SYS.tab.push((tab, A) => {
     // (and so has every other stat: a season at the books, at speeches, at the old stratagems)
     A.push(mkAct({ id: 'drill', kind: 'drill', n: '修习', ap: 1, hint: '武 政 交 谋 选一项 · 熟练+2',
       no: () => ageOf(p) < 8 ? '年纪太小' : '', fn: () => pickOpt('修习哪一项？ ◆1', DRILLS.map(([n, k, i]) => { const top = p.st[i] >= XP_CAP, f = p.focus && p.focus.i === i;
-        return { n: n + ' · ' + STATN[i] + ' ' + p.st[i], s: top ? '已到顶，要拜师才能再进' : '熟练+' + (f ? 3 : 2) + (f ? '（志）' : '') + ' · 还差 ' + Math.max(0, xpNeed(p.st[i]) - ((p.xp || [])[i] || 0)), style: top ? 'off' : 'jade',
+        return { n: n + ' · ' + STATN[i] + ' ' + p.st[i], s: top ? '已到顶 · 找「人」里标着名师的求教' : '熟练+' + (f ? 3 : 2) + (f ? '（志）' : '') + ' · 还差 ' + Math.max(0, xpNeed(p.st[i]) - ((p.xp || [])[i] || 0)), style: top ? 'off' : 'jade',
           fn: () => { if (top || !spendAp(1)) return; didAct(k, null, i, true); } }; })) }));
     if (isIll(p)) A.push(doctorAct(p));
     if (sickHome().length) A.push(famDoctorAct());
@@ -9157,7 +9159,7 @@ function drawPeople() {
       return;
     }
     const s = seats && seats.get(c), lk = s && s.lean, head = s && lk && lk !== 'you' && LEAD[lk].cat() === c;
-    charRow(c, y, () => openSheet(c.id), (c.house === 'li' ? '狸氏 · ' : '') + (s ? (head ? (lk === 'wang' ? '王' : lk === 'zong' ? '宗室之首' : LEAD[lk].n + '系之首') : lk ? (lk === 'you' ? '你的人' : '倾向' + LEAD[lk].n) : '朝中中立') : (LOCN[c.loc] || '') + ' · ' + (officeOf(c) || GROUPN[c.role] || '')));
+    charRow(c, y, () => openSheet(c.id), (typeof MASTERS !== 'undefined' && MASTERS[c.id] !== undefined ? '名师·' + STATN[MASTERS[c.id]] + ' · ' : '') + (c.house === 'li' ? '狸氏 · ' : '') + (s ? (head ? (lk === 'wang' ? '王' : lk === 'zong' ? '宗室之首' : LEAD[lk].n + '系之首') : lk ? (lk === 'you' ? '你的人' : '倾向' + LEAD[lk].n) : '朝中中立') : (LOCN[c.loc] || '') + ' · ' + (officeOf(c) || GROUPN[c.role] || '')));
     // (a seat at court: a square in its leader's colour, hollow while neutral)
     if (s) { rect(5, y + 27, 5, 5, lk ? LEAD[lk].ink : '#6a6268'); rect(6, y + 28, 3, 3, lk ? LEAD[lk].col : '#e8d4a8'); }
     peopleMarks(c, y, jw);
