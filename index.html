@@ -5841,7 +5841,7 @@ EV.tanhe = e => {
   const seal = () => { if (k === 'lv' && A.xiang === 'you' && W.rank === 3 && powerOf('lv') > powerOf('you') && chance(.35)) { A.xiang = 'lv'; W.rank = 2; PORT.clear(); MINI.clear(); logLine('相印回到了吕不韦手里', '#ff9a8a'); } };
   const him = ta(L);
   return { title: '弹劾', who: [L.id], text: (k === 'chu' && !e.yi ? nm(L) : '') + t0,
-    opts: [opt('「当庭辩驳。」', duelHint('舌战', L, null, '胜：' + him + '的朝臣离心 · 败：你的离心，名望-5'), () => startDuel('舌战', L, w => { if (w) cut(k, L, 10); else { cut('you', p, 10); addPrest(-5); seal(); } },
+    opts: [opt('「当庭辩驳。」', duelHint('舌战', L, null, '胜：' + him + '失一人心 · 败：你失，望-5'), () => startDuel('舌战', L, w => { if (w) cut(k, L, 10); else { cut('you', p, 10); addPrest(-5); seal(); } },
         { why: '胜：' + him + '的一个人冷了 · 败：你的一个人冷了 · 名望-5' })),
       opt('「送礼平息。」', '鱼干-60 · ' + nm(L) + '+10', () => { addFish(-60); addOp(L, p, 10); }, () => W.fish >= 60),
       secs.length ? opt('「拿出' + him + '的把柄。」', fitT('弹劾：' + secretText(secs[0]), 140, 5.5, 1), () => exposeSec(secs[0], W.player)) : null,
@@ -5894,9 +5894,11 @@ EV.qingsuan = () => {
   if (W.rank < 2 || ageOf(p) < 16) { A.end = 'E1'; return null; }
   const op = opinion(z, p), off = W.rank >= 3 ? '相位' : '官', b = zhengBlood();
   // 忌惮 first: a minister the king fears goes unless he loves him; one he hates goes too
-  const stay = (A.yi >= 80 && op < 60) || op <= -60 ? 'E5' : (A.yi >= 50 && op < 80) || op < 0 ? 'E4' : 'E1', young = A.quell && op >= 50 && powerOf('you') > powerOf('wang');
+  const stay = (A.yi >= 80 && op < 60) || op <= -60 ? 'E5' : (A.yi >= 50 && op < 80) || op < 0 ? 'E4' : 'E1', young = A.quell && op >= 50 && powerOf('you') > powerOf('wang'), strong = powerOf('you') > powerOf('wang');
   const O = [opt('「臣请辞' + off + '。」', '功成身退 · ' + nm(z) + '+20', () => endAs('retire')),
-    opt('「臣还能为王上做事。」', { E1: '多半留任', E4: '多半外放', E5: '凶多吉少' }[stay], () => endAs(stay))];
+    // (a minister whose side outweighs the king's cannot be sent away tonight: he stays, and the king keeps the grudge for act three)
+    strong && stay !== 'E1' ? opt('「臣还能为王上做事。」', '你势' + powerOf('you') + ' 王' + powerOf('wang') + ' · 他眼下动不了你', () => { logLine('王上没有再问下去。这笔账，他记着', '#ff9a8a'); endAs('E1'); })
+      : opt('「臣还能为王上做事。」', { E1: '多半留任', E4: '多半外放', E5: '凶多吉少' }[stay], () => endAs(stay))];
   if (W.rank >= 4) O.push(opt('「王上还年轻。」', young ? '仲父摄政' : '凶多吉少', () => endAs(young ? 'E2' : 'E5'), null, '野心'));
   // (his mother's house: he owns the kinship only if he loves you and doesn't fear you; his father: a secret he may not forgive)
   if (b) { const ok = b.mom ? op >= 80 && A.yi < 30 : op >= 60; O.push(opt(b.t, ok ? '他会认你' : b.mom ? '多半外放' : '凶多吉少', () => endAs(ok ? 'E3b' : b.mom ? 'E4' : 'E5', b.mom))); }
