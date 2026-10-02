@@ -6,3 +6,4 @@ __pycache__/
 _sheet.js
 .test-output/
 node_modules/
+.cache/

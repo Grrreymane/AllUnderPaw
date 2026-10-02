@@ -43,5 +43,6 @@ function openObjective() {
   const c = chapterContext(), tab = hintTab();
   openList('眼下的事', [{ t: c.title, wrap: true }, { t: c.text, wrap: true }, { t: c.detail, wrap: true }, { t: objective(), wrap: true },
     ...(tab ? [{ t: '去「' + TABS[tab].n + '」看看 ›', s: '关闭此页，打开目标所在的地方', close: true, fn: () => { W.loc = tab; } }] : []),
-    { t: '狸家纪事 ›', s: '回看已经做过的选择', close: true, fn: openChronicle }]);
+    { t: '狸家纪事 ›', s: '回看已经做过的选择', close: true, fn: openChronicle },
+    { t: '画卷图鉴 ›', s: '回看剧情插画与人物立绘', close: true, fn: openArtGallery }]);
 }

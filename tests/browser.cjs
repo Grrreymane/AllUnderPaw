@@ -10,6 +10,14 @@ fs.mkdirSync(out, { recursive: true });
 const hook = `const reviewSetItem = Storage.prototype.setItem; window.__review = {
   start(i) { closeUtility(); MODAL.length = 0; startScen(i); scenSettle(); MODAL.length = 0; W.flags.tourDone = true; W.flags.raceTip = true; saveGame(); render(); },
   world: () => JSON.parse(JSON.stringify(W)),
+  cgStart() { closeUtility(); newGame(); state='game'; saveGame(); pumpQueue(); render(); },
+  modal: () => top() && { type:top().type, title:top().e && top().e.title, id:top().id },
+  artReady: path => { const im=ART_IMAGES.get(path); return !!(im && im.complete && im.naturalWidth); },
+  cgSeen: () => Object.keys(W.art.seen),
+  artGallery() { MODAL.length=0; W.queue=[]; openArtGallery(); render(); },
+  cast(id) { MODAL.length=0; W.queue=[]; openSheet(id || W.flags.prologueKids[1]); render(); },
+  missingCG() { MODAL.length=0; W.queue=[]; ART_IMAGES.delete('art/cg/qihuo.webp'); W.art.seen.qihuo={t:W.t,title:'奇货'}; openCG('qihuo'); render(); },
+  artFailed: () => !!ART_IMAGES.get('art/cg/qihuo.webp').failed,
   journal() { MODAL.length = 0; openChronicle(); render(); },
   conquest() { const k = A3_RK.find(k => !rFallen(k)); if (k) fallRealm(k, 'yield'); scenSettle(); MODAL.length = 0; },
   close() { MODAL.length = 0; closeUtility(); render(); },
@@ -100,8 +108,36 @@ const server = http.createServer((req, res) => {
     await page.evaluate(() => window.__review.allowSave());
     await page.getByRole('button', { name: '立即保存' }).click();
     await page.getByRole('status').filter({ hasText: '当前进度已保存' }).waitFor();
+    await page.evaluate(() => window.__review.cgStart());
+    await page.setViewportSize({width:390,height:844});
+    await page.waitForFunction(() => window.__review.artReady('art/cg/prologue.webp'));
+    assert.equal((await page.evaluate(() => window.__review.modal())).type,'cg');
+    await shot('cg-prologue');
+    await tap(90,248); await page.getByRole('dialog',{name:'三问'}).waitFor();
+    await page.waitForFunction(() => document.querySelector('.art-panel img').naturalWidth === 1280);
+    await shot('cg-expanded');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(100); await tap(90,282);
+    assert.equal((await page.evaluate(() => window.__review.modal())).title,'三问');
+    await shot('cg-original-choice');
+    await page.evaluate(() => window.__review.cast());
+    await page.waitForFunction(() => window.__review.artReady('art/faces/li2.webp'));
+    await shot('character-sheet');
+    await page.waitForTimeout(100); await tap(40,55);
+    await page.waitForFunction(() => window.__review.artReady('art/portraits/li2.webp'));
+    await shot('character-standing');
+    await page.setViewportSize({width:320,height:568}); await shot('character-small-phone');
+    await tap(90,264); await page.getByRole('dialog').waitFor();
+    assert.ok(await page.locator('.art-panel').evaluate(el => el.getBoundingClientRect().bottom <= innerHeight));
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => window.__review.artGallery()); await shot('art-gallery');
+    assert.deepEqual(await page.evaluate(() => window.__review.cgSeen()),['prologue']);
+    await page.route('**/art/cg/qihuo.webp',route=>route.abort());
+    await page.evaluate(() => window.__review.missingCG());
+    await page.waitForFunction(() => window.__review.artFailed()); await shot('cg-missing-image');
+    await page.waitForTimeout(100); await tap(90,282);
+    assert.notEqual((await page.evaluate(() => window.__review.modal()))?.type,'cg');
     assert.equal(await page.locator('#game-err').count(), 0);
     assert.deepEqual(errors, []);
-    console.log('PASS: real browser; objectives/journal, export/import, corrupt-save recovery, pending-choice reload, quota failure/retry, unsaved export, 320px layout and keyboard dismissal.');
+    console.log('PASS: real browser; save/recovery/journal, CG pause and original choices, expanded artwork, portrait sheet/standing view, gallery locks, failed-image fallback, 320px layout and keyboard dismissal.');
   } finally { if (browser) await browser.close(); await new Promise(r => server.close(r)); }
 })().catch(e => { console.error(e); process.exitCode = 1; });
