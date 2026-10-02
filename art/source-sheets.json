@@ -1,0 +1,217 @@
+[
+  {
+    "sheet": "cast-main",
+    "cols": 4,
+    "rows": 2,
+    "ids": [
+      "li1",
+      "li2",
+      "li3",
+      "zheng",
+      "lv",
+      "yiren",
+      "zhaoji",
+      "pingyuan"
+    ]
+  },
+  {
+    "sheet": "cast-2",
+    "cols": 4,
+    "rows": 4,
+    "ids": [
+      "zhao",
+      "anguo",
+      "huayang",
+      "xiaji",
+      "zixi",
+      "zhaowang",
+      "maosui",
+      "lianpo",
+      "zhaokuo",
+      "lzl",
+      "guozong",
+      "xinling",
+      "qinhui",
+      "xuan",
+      "daozi",
+      "wuling"
+    ]
+  },
+  {
+    "sheet": "cast-3",
+    "cols": 4,
+    "rows": 4,
+    "ids": [
+      "huiwen",
+      "weihou",
+      "changanz",
+      "zhaoshe",
+      "weizhao",
+      "anli",
+      "pyfuren",
+      "yuqing",
+      "fanju",
+      "menga",
+      "caize",
+      "chengping",
+      "changwen",
+      "mengwu",
+      "wangjian",
+      "huanyi"
+    ]
+  },
+  {
+    "sheet": "cast-4",
+    "cols": 4,
+    "rows": 4,
+    "ids": [
+      "laoai",
+      "baiqi",
+      "hanfuren",
+      "dan",
+      "zhengguo",
+      "lisi",
+      "ganluo",
+      "maojiao",
+      "hanan",
+      "jingmin",
+      "weijia",
+      "youwang",
+      "fuchu",
+      "xiangyan",
+      "yanxi",
+      "jingke"
+    ]
+  },
+  {
+    "sheet": "cast-5",
+    "cols": 4,
+    "rows": 4,
+    "ids": [
+      "qijian",
+      "housheng",
+      "hanfei",
+      "weiliao",
+      "wangben",
+      "lixin",
+      "fusu",
+      "liuji",
+      "huhai",
+      "ziying",
+      "daoxiang",
+      "guokai",
+      "zhaoqian",
+      "limu",
+      "xinyuan",
+      "shicang"
+    ]
+  },
+  {
+    "sheet": "cast-6",
+    "cols": 2,
+    "rows": 3,
+    "ids": [
+      "chengjiao",
+      "zheng-baby",
+      "zheng-young",
+      "yiren-king",
+      "zhaoji-queen",
+      "li2-queen"
+    ]
+  },
+  {
+    "sheet": "cg-1",
+    "cols": 2,
+    "rows": 2,
+    "ids": [
+      "prologue",
+      "qihuo",
+      "lvfeast",
+      "changping"
+    ],
+    "kind": "cg",
+    "inset": 5
+  },
+  {
+    "sheet": "cg-2",
+    "cols": 2,
+    "rows": 2,
+    "ids": [
+      "zheng-zhao",
+      "zheng-li",
+      "siege",
+      "escape"
+    ],
+    "kind": "cg",
+    "inset": 5
+  },
+  {
+    "sheet": "cg-3",
+    "cols": 2,
+    "rows": 2,
+    "ids": [
+      "qiefu",
+      "xianyang",
+      "young-king",
+      "guanli"
+    ],
+    "kind": "cg",
+    "inset": 5
+  },
+  {
+    "sheet": "cg-4",
+    "cols": 2,
+    "rows": 2,
+    "ids": [
+      "qingsuan",
+      "jingke",
+      "unification",
+      "daze"
+    ],
+    "kind": "cg",
+    "inset": 5
+  },
+  {
+    "sheet": "cast-repair",
+    "cols": 4,
+    "rows": 4,
+    "ids": [
+      "huiwen",
+      "weizhao",
+      "hanan",
+      "jingmin",
+      "weijia",
+      "youwang",
+      "fuchu",
+      "yanxi",
+      "qijian",
+      "huhai",
+      "ziying",
+      "daoxiang",
+      "zhaoqian",
+      "zheng-young",
+      "lisi",
+      "zhengguo"
+    ]
+  },
+  {
+    "sheet": "changping-clean",
+    "cols": 1,
+    "rows": 1,
+    "ids": [
+      "changping"
+    ],
+    "kind": "cg",
+    "inset": 0
+  },
+  {
+    "sheet": "unification-clean",
+    "cols": 1,
+    "rows": 1,
+    "ids": [
+      "unification"
+    ],
+    "kind": "cg",
+    "inset": 0
+  }
+]
