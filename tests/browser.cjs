@@ -1,0 +1,107 @@
+'use strict';
+// Optional real-browser checks: install Playwright locally or set PAW_PLAYWRIGHT to an existing package.
+const { chromium } = require(process.env.PAW_PLAYWRIGHT || 'playwright');
+const fs = require('node:fs');
+const path = require('node:path');
+const http = require('node:http');
+const assert = require('node:assert/strict');
+const root = path.resolve(__dirname, '..'), out = path.join(root, '.test-output');
+fs.mkdirSync(out, { recursive: true });
+const hook = `const reviewSetItem = Storage.prototype.setItem; window.__review = {
+  start(i) { closeUtility(); MODAL.length = 0; startScen(i); scenSettle(); MODAL.length = 0; W.flags.tourDone = true; W.flags.raceTip = true; saveGame(); render(); },
+  world: () => JSON.parse(JSON.stringify(W)),
+  journal() { MODAL.length = 0; openChronicle(); render(); },
+  conquest() { const k = A3_RK.find(k => !rFallen(k)); if (k) fallRealm(k, 'yield'); scenSettle(); MODAL.length = 0; },
+  close() { MODAL.length = 0; closeUtility(); render(); },
+  saves() { openSaveManager(); },
+  season() { endSeason(); scenSettle(); MODAL.length = 0; saveGame(); },
+  choice() { showCard({ title: '等待选择', text: '此时刷新应回到之前的完整进度。', opts: [opt('继续', '', () => { W.fish += 7; }), opt('等等', '', () => {})] }); saveGame(); },
+  failSave() { Storage.prototype.setItem = () => { throw Error('quota'); }; W.fish += 3; saveGame(); },
+  allowSave() { Storage.prototype.setItem = reviewSetItem; },
+  corrupt() { localStorage.setItem('all-under-paw-w', '{broken'); state = 'title'; TSAVE = undefined; render(); }
+};`;
+const server = http.createServer((req, res) => {
+  const url = new URL(req.url, 'http://localhost');
+  if (url.pathname === '/review.html') {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.end(fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace('/*TEST_HOOK*/', hook)); return;
+  }
+  const file = path.resolve(root, '.' + decodeURIComponent(url.pathname));
+  if (!file.startsWith(root + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) { res.writeHead(404); res.end(); return; }
+  res.setHeader('Content-Type', file.endsWith('.woff2') ? 'font/woff2' : file.endsWith('.jpg') ? 'image/jpeg' : 'application/octet-stream');
+  fs.createReadStream(file).pipe(res);
+});
+(async () => {
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true, ...(process.env.PAW_BROWSER ? { executablePath: process.env.PAW_BROWSER } : {}) });
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    const tap = async (x, y) => { const box = await page.locator('#c').boundingBox(); await page.mouse.click(box.x + box.width * x / 180, box.y + box.height * y / 320); };
+    const shot = async name => { await page.evaluate(() => document.fonts.ready); await page.screenshot({ path: path.join(out, name + '.png') }); };
+    await page.goto('http://127.0.0.1:' + server.address().port + '/review.html');
+    await page.waitForFunction(() => window.__gameBooted);
+    await shot('title');
+    await tap(20, 10);
+    await page.getByRole('dialog', { name: '狸家存档' }).waitFor();
+    assert.equal(await page.getByRole('button', { name: '导出当前存档' }).isDisabled(), true);
+    await page.getByRole('button', { name: '回到游戏' }).click();
+    await page.evaluate(() => window.__review.start(0));
+    await page.waitForTimeout(80); await tap(50, 38); await shot('objective-act1');
+    await page.evaluate(() => { window.__review.close(); window.__review.start(3); });
+    await page.waitForTimeout(80); await tap(50, 38); await shot('objective-act3');
+    await page.evaluate(() => { window.__review.close(); window.__review.conquest(); window.__review.journal(); }); await shot('chronicle');
+    await page.evaluate(() => { window.__review.close(); window.__review.season(); window.__review.saves(); });
+    await page.getByRole('dialog').waitFor(); await shot('save-manager');
+    assert.ok(!(await page.getByRole('button', { name: '恢复备份' }).isDisabled()));
+    const before = await page.evaluate(() => window.__review.world());
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: '导出当前存档' }).click();
+    const download = await downloadPromise; await download.saveAs(path.join(out, 'export.json'));
+    const exported = JSON.parse(fs.readFileSync(path.join(out, 'export.json'), 'utf8'));
+    assert.equal(exported.world.t, before.t);
+    await page.locator('input[type=file]').setInputFiles({ name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from('{bad') });
+    await page.getByRole('status').filter({ hasText: '损坏' }).waitFor();
+    assert.equal((await page.evaluate(() => window.__review.world())).fish, before.fish);
+    exported.world.fish += 123;
+    await page.locator('input[type=file]').setInputFiles({ name: 'valid.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(exported)) });
+    await page.getByRole('button', { name: '确认导入' }).waitFor();
+    assert.equal((await page.evaluate(() => window.__review.world())).fish, before.fish);
+    await shot('import-confirm');
+    await page.getByRole('button', { name: '确认导入' }).click();
+    assert.equal((await page.evaluate(() => window.__review.world())).fish, before.fish + 123);
+    await page.evaluate(() => window.__review.saves());
+    await page.getByRole('button', { name: '恢复备份' }).click();
+    await page.getByRole('button', { name: '确认恢复' }).click();
+    assert.equal((await page.evaluate(() => window.__review.world())).fish, before.fish);
+    await page.evaluate(() => window.__review.corrupt());
+    await page.waitForTimeout(80); await tap(90, 275);
+    await page.getByRole('dialog').waitFor();
+    await page.getByRole('button', { name: '恢复备份' }).click();
+    await page.getByRole('button', { name: '确认恢复' }).click();
+    assert.equal((await page.evaluate(() => window.__review.world())).fish, before.fish + 123);
+    await page.evaluate(() => { window.__review.choice(); });
+    const checkpoint = await page.evaluate(() => localStorage.getItem('all-under-paw-w'));
+    await page.reload(); await page.waitForFunction(() => window.__gameBooted); await tap(90, 275);
+    assert.equal((await page.evaluate(() => window.__review.world())).fish, JSON.parse(checkpoint).fish);
+    await page.evaluate(() => window.__review.saves());
+    await page.setViewportSize({ width: 320, height: 568 }); await shot('save-small-phone');
+    assert.ok(await page.locator('.save-panel').evaluate(el => el.getBoundingClientRect().bottom <= innerHeight));
+    await page.keyboard.press('Escape');
+    assert.equal(await page.getByRole('dialog').count(), 0);
+    await page.evaluate(() => { window.__review.close(); window.__review.failSave(); window.__review.saves(); });
+    await page.getByRole('status').filter({ hasText: '进度未能保存' }).waitFor();
+    const failedWorld = await page.evaluate(() => window.__review.world());
+    const failedDownloadPromise = page.waitForEvent('download');
+    await page.getByRole('button', { name: '导出当前存档' }).click();
+    await (await failedDownloadPromise).saveAs(path.join(out, 'unsaved-export.json'));
+    assert.equal(JSON.parse(fs.readFileSync(path.join(out, 'unsaved-export.json'), 'utf8')).world.fish, failedWorld.fish);
+    await page.evaluate(() => window.__review.allowSave());
+    await page.getByRole('button', { name: '立即保存' }).click();
+    await page.getByRole('status').filter({ hasText: '当前进度已保存' }).waitFor();
+    assert.equal(await page.locator('#game-err').count(), 0);
+    assert.deepEqual(errors, []);
+    console.log('PASS: real browser; objectives/journal, export/import, corrupt-save recovery, pending-choice reload, quota failure/retry, unsaved export, 320px layout and keyboard dismissal.');
+  } finally { if (browser) await browser.close(); await new Promise(r => server.close(r)); }
+})().catch(e => { console.error(e); process.exitCode = 1; });
