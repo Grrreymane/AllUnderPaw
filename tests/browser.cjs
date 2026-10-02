@@ -34,6 +34,29 @@ const hook = `const reviewSetItem = Storage.prototype.setItem; window.__review =
   missingCG() { MODAL.length=0; W.queue=[]; ART_IMAGES.delete('art/cg/qihuo.webp'); W.art.seen.qihuo={t:W.t,title:'奇货'}; openCG('qihuo'); render(); },
   artFailed: () => !!ART_IMAGES.get('art/cg/qihuo.webp').failed,
   journal() { MODAL.length = 0; openChronicle(); render(); },
+  objective() { MODAL.length=0; openObjective(); render(); },
+  kinDemo() {
+    closeUtility(); startScen(2); MODAL.length=0; W.queue=[];
+    const p=mkc({id:'uihead',name:'家主',house:'li',born:W.t-140,loc:'home',tr:[]}); W.player=p.id;
+    const g=mkc({id:'uipatron',name:'外祖',sur:'蒙',born:W.t-240,loc:'xpalace',hist:true,role:'general',tr:[]});
+    const w=mkc({id:'uiwife',name:'氏',sur:'蒙',female:true,dad:g.id,born:W.t-132,loc:'home',tr:[]}); g.kids.push(w.id); marry(p,w);
+    for(const [id,name,born] of [['uiolder','长子',W.t-76],['uiyounger','次子',W.t-68]]) { const c=mkc({id,name,sur:'狸',dad:p.id,mom:w.id,house:'li',born,loc:'home',tr:[]}); p.kids.push(c.id);w.kids.push(c.id); }
+    addCourtier(g.id,2,{},true); W.law='嫡长'; W.heirId=null; kinInvalidate(); openKinPolitics(); render();
+  },
+  kinRequest() { MODAL.length=0; kinShowRequest(C('uipatron'),C('uiyounger')); render(); },
+  kinReviewPromise() {
+    MODAL.length=0; openKinPolitics(); const m=top(), rows=typeof m.rows==='function'?m.rows():m.rows;
+    const row=rows.find(r=>r.t.includes('支持')&&typeof r.fn==='function');
+    if(!row)throw Error('Conflicting pledge has no negotiation entry');
+    if(row.close)drop(m);row.fn();render();
+  },
+  chooseText(text) { const m=top(), o=m.e.opts.find(o=>o.t.includes(text)); if(!o)throw Error('Missing option '+text); choose(m,o); render(); },
+  succession() { MODAL.length=0; W.queue=[]; die(P());pumpQueue();render(); },
+  kinStatus() { return {pledges:W.kinPolitics.pledges,score:kinPoliticsScore(C('uipatron'),P()),head:W.player,fish:W.fish}; },
+  listRows() { const m=top();return m&&m.type==='list'?(typeof m.rows==='function'?m.rows():m.rows).map(r=>({t:r.t,s:r.s})):[]; },
+  eventHints() { return top().e.opts.map(o=>({t:o.t,hint:o.hint})); },
+  historyDemo() { MODAL.length=0; startScen(3); MODAL.length=0; W.queue=[]; W.ap=5; W.fish=500; a3Jian('han'); openWorldEffects('han'); render(); },
+  historyHeads() { MODAL.length=0;openGenerationHistory();render(); },
   conquest() { const k = A3_RK.find(k => !rFallen(k)); if (k) fallRealm(k, 'yield'); scenSettle(); MODAL.length = 0; },
   close() { MODAL.length = 0; closeUtility(); render(); },
   saves() { openSaveManager(); },
@@ -180,6 +203,28 @@ const server = http.createServer((req, res) => {
     assert.notEqual((await page.evaluate(() => window.__review.modal()))?.type,'cg');
     assert.equal(await page.locator('#game-err').count(), 0);
     assert.deepEqual(errors, []);
-    console.log('PASS: real browser; save/recovery/journal, paper CG window and original choices, portrait sheet/standing view and both close buttons, clear faces/list scrolling/family/share, gallery locks, failed-image fallback, 320px layout.');
+    await page.evaluate(()=>window.__review.kinDemo()); await shot('kinship-overview');
+    assert.ok((await page.evaluate(()=>window.__review.listRows())).some(r=>r.t.includes('商议')));
+    await page.evaluate(()=>window.__review.kinRequest()); await shot('kinship-request');
+    await page.evaluate(()=>window.__review.chooseText('答应让'));
+    assert.equal((await page.evaluate(()=>window.__review.kinStatus())).pledges[0].status,'active');
+    await page.evaluate(()=>window.__review.objective()); await shot('family-objective');
+    assert.ok((await page.evaluate(()=>window.__review.listRows())).some(r=>r.t.includes('当前继承人')));
+    await page.evaluate(()=>window.__review.succession()); await shot('succession-consequences');
+    assert.ok((await page.evaluate(()=>window.__review.eventHints())).some(o=>o.hint.includes('失约')));
+    await page.evaluate(()=>window.__review.chooseText('长子'));
+    const consequences=await page.evaluate(()=>window.__review.kinStatus());
+    assert.equal(consequences.head,'uiolder'); assert.equal(consequences.pledges[0].status,'broken'); assert.ok(consequences.score<0);
+    await page.evaluate(()=>window.__review.historyDemo()); await shot('world-effects');
+    assert.ok((await page.evaluate(()=>window.__review.listRows())).some(r=>r.t.includes('小鱼干净变动')));
+    await page.evaluate(()=>window.__review.historyHeads()); await shot('generation-history');
+    await page.evaluate(()=>{window.__review.kinDemo();window.__review.kinRequest();window.__review.chooseText('答应让');});
+    const beforeRelease=await page.evaluate(()=>window.__review.kinStatus());
+    await page.evaluate(()=>window.__review.kinReviewPromise()); await shot('kinship-dispute');
+    await page.evaluate(()=>window.__review.chooseText('备礼解约'));
+    const afterRelease=await page.evaluate(()=>window.__review.kinStatus());
+    assert.equal(afterRelease.pledges[0].status,'released'); assert.equal(afterRelease.fish,beforeRelease.fish-60);
+    assert.equal(await page.locator('#game-err').count(),0); assert.deepEqual(errors,[]);
+    console.log('PASS: real browser; save/recovery/journal, paper CG and portraits, gallery locks, failed-image fallback, kinship pledges and succession consequences, actual history results, 320px layout.');
   } finally { if (browser) await browser.close(); await new Promise(r => server.close(r)); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

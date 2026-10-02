@@ -38,7 +38,9 @@ function decodeSave(raw) {
   }
   for (const k of ['ret', 'secrets', 'queue', 'news', 'log', 'later']) if (d[k] !== undefined && !Array.isArray(d[k])) throw new Error('存档中的消息资料不完整。');
   for (const k of ['cool', 'done', 'a2', 'a3']) if (d[k] !== undefined && !obj(d[k])) throw new Error('存档中的剧情资料不完整。');
-  if (d.chronicle && (!obj(d.chronicle) || !number(d.chronicle.from) || !Array.isArray(d.chronicle.events) || d.chronicle.events.length > 300 || !d.chronicle.events.every(e => obj(e) && number(e.t) && ['choice', 'succession', 'realm'].includes(e.kind) && ['title', 'text', 'head', 'name'].every(k => typeof e[k] === 'string')))) throw new Error('存档中的纪事资料损坏。');
+  if (d.chronicle && (!obj(d.chronicle) || !number(d.chronicle.from) || !Array.isArray(d.chronicle.events) || d.chronicle.events.length > 300 || !d.chronicle.events.every(e => obj(e) && number(e.t) && ['choice', 'succession', 'realm', 'kinship'].includes(e.kind) && ['title', 'text', 'head', 'name'].every(k => typeof e[k] === 'string')))) throw new Error('存档中的纪事资料损坏。');
+  if (!validateKinPolitics(d)) throw new Error('存档中的姻亲约定损坏。');
+  validateHistoryEffects(d);
   return d;
 }
 function validSlot(raw) { try { return decodeSave(raw); } catch (e) { return null; } }
@@ -61,6 +63,7 @@ function writeWorld(raw, rotate = true) {
 }
 function saveGame() {
   if (SAVE_SUSPENDED || !W || state !== 'game') return false;
+  historyFlushPending();
   if (!saveReady()) { SAVE_STATUS.pending = true; return false; }
   return writeWorld(JSON.stringify(W));
 }
