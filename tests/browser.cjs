@@ -14,8 +14,12 @@ const hook = `const reviewSetItem = Storage.prototype.setItem; window.__review =
   modal: () => top() && { type:top().type, title:top().e && top().e.title, id:top().id },
   cgHit: () => HITS[0].r,
   artReady: path => { const im=ART_IMAGES.get(path); return !!(im && im.complete && im.naturalWidth); },
+  facesReady: () => { const faces=[...ART_IMAGES].filter(([p])=>p.startsWith('art/faces/')); return faces.length>0 && faces.every(([,im])=>im.complete && im.naturalWidth); },
   cgSeen: () => Object.keys(W.art.seen),
   artGallery() { MODAL.length=0; W.queue=[]; openArtGallery(); render(); },
+  castGallery() { MODAL.length=0; W.queue=[]; openCastGallery(); render(); },
+  familyTree() { MODAL.length=0; W.queue=[]; openFamily(); render(); },
+  share() { makeShare('狸家'); },
   cast(id) { MODAL.length=0; W.queue=[]; openSheet(id || W.flags.prologueKids[1]); render(); },
   missingCG() { MODAL.length=0; W.queue=[]; ART_IMAGES.delete('art/cg/qihuo.webp'); W.art.seen.qihuo={t:W.t,title:'奇货'}; openCG('qihuo'); render(); },
   artFailed: () => !!ART_IMAGES.get('art/cg/qihuo.webp').failed,
@@ -133,6 +137,16 @@ const server = http.createServer((req, res) => {
     assert.equal((await page.evaluate(() => window.__review.modal())).type,'sheet');
     await page.evaluate(() => window.__review.artGallery()); await shot('art-gallery');
     assert.deepEqual(await page.evaluate(() => window.__review.cgSeen()),['prologue']);
+    await page.evaluate(() => window.__review.castGallery());
+    await page.waitForFunction(() => window.__review.facesReady());
+    await shot('faces-clear');
+    await page.mouse.wheel(0,190); await page.waitForTimeout(150); await shot('faces-scrolled');
+    await page.evaluate(() => window.__review.familyTree()); await shot('faces-family');
+    await page.evaluate(() => window.__review.share());
+    await page.getByAltText('战绩').waitFor();
+    assert.ok(await page.getByAltText('战绩').evaluate(im => im.naturalWidth === 720));
+    await page.reload(); await page.waitForFunction(() => window.__gameBooted);
+    await page.evaluate(() => window.__review.start(0));
     await page.route('**/art/cg/qihuo.webp',route=>route.abort());
     await page.evaluate(() => window.__review.missingCG());
     await page.waitForFunction(() => window.__review.artFailed()); await shot('cg-missing-image');
@@ -140,6 +154,6 @@ const server = http.createServer((req, res) => {
     assert.notEqual((await page.evaluate(() => window.__review.modal()))?.type,'cg');
     assert.equal(await page.locator('#game-err').count(), 0);
     assert.deepEqual(errors, []);
-    console.log('PASS: real browser; save/recovery/journal, paper CG window and original choices, portrait sheet/standing view and both close buttons, gallery locks, failed-image fallback, 320px layout.');
+    console.log('PASS: real browser; save/recovery/journal, paper CG window and original choices, portrait sheet/standing view and both close buttons, clear faces/list scrolling/family/share, gallery locks, failed-image fallback, 320px layout.');
   } finally { if (browser) await browser.close(); await new Promise(r => server.close(r)); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

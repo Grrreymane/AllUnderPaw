@@ -51,6 +51,29 @@ function illustratedPortrait(c) {
   if (!ART_DEAD.has(id)) ART_DEAD.set(id, paint(192, 192, gx => { gx.filter = 'grayscale(1)'; gx.globalAlpha = .65; gx.drawImage(im, 0, 0, 192, 192); }));
   return ART_DEAD.get(id);
 }
+// Draw illustrated faces at display resolution, with the same viewport and badges as the pixel UI.
+function queuePortrait(im, x, y, size) {
+  if (DRY) return null;
+  const a = { im, x, y, w: size, h: size, clip: TCLIP && TCLIP.slice(), alpha: g.globalAlpha, smooth: true };
+  ARTQ.push(a); return a;
+}
+function presentArtwork(target, scale) {
+  for (const a of ARTQ) {
+    target.save();
+    target.imageSmoothingEnabled = !!a.smooth;
+    if (a.smooth) target.imageSmoothingQuality = 'high';
+    target.globalAlpha = a.alpha === undefined ? 1 : a.alpha;
+    if (a.clip) { target.beginPath(); target.rect(...a.clip.map(v => v * scale)); target.clip(); }
+    if (a.cutouts) {
+      target.beginPath(); target.rect(a.x * scale, a.y * scale, a.w * scale, a.h * scale);
+      for (const r of a.cutouts) target.rect(...r.map(v => v * scale));
+      target.clip('evenodd');
+    }
+    target.drawImage(a.im, a.x * scale, a.y * scale, a.w * scale, a.h * scale);
+    target.restore();
+  }
+  ARTQ.length = 0;
+}
 function drawArt(path, x, y, w, h) {
   const im = artImage(path);
   if (im.complete && im.naturalWidth) { ARTQ.push({ im, x, y, w, h }); return true; }

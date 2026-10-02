@@ -8802,6 +8802,29 @@ function illustratedPortrait(c) {
   if (!ART_DEAD.has(id)) ART_DEAD.set(id, paint(192, 192, gx => { gx.filter = 'grayscale(1)'; gx.globalAlpha = .65; gx.drawImage(im, 0, 0, 192, 192); }));
   return ART_DEAD.get(id);
 }
+// Draw illustrated faces at display resolution, with the same viewport and badges as the pixel UI.
+function queuePortrait(im, x, y, size) {
+  if (DRY) return null;
+  const a = { im, x, y, w: size, h: size, clip: TCLIP && TCLIP.slice(), alpha: g.globalAlpha, smooth: true };
+  ARTQ.push(a); return a;
+}
+function presentArtwork(target, scale) {
+  for (const a of ARTQ) {
+    target.save();
+    target.imageSmoothingEnabled = !!a.smooth;
+    if (a.smooth) target.imageSmoothingQuality = 'high';
+    target.globalAlpha = a.alpha === undefined ? 1 : a.alpha;
+    if (a.clip) { target.beginPath(); target.rect(...a.clip.map(v => v * scale)); target.clip(); }
+    if (a.cutouts) {
+      target.beginPath(); target.rect(a.x * scale, a.y * scale, a.w * scale, a.h * scale);
+      for (const r of a.cutouts) target.rect(...r.map(v => v * scale));
+      target.clip('evenodd');
+    }
+    target.drawImage(a.im, a.x * scale, a.y * scale, a.w * scale, a.h * scale);
+    target.restore();
+  }
+  ARTQ.length = 0;
+}
 function drawArt(path, x, y, w, h) {
   const im = artImage(path);
   if (im.complete && im.naturalWidth) { ARTQ.push({ im, x, y, w, h }); return true; }
@@ -8896,6 +8919,8 @@ function drawPortrait(c, x, y, s, frameCol) {
   s = s || 1;
   rect(x - 1, y - 1, 32 * s + 2, 32 * s + 2, OUT);
   rect(x, y, 32 * s, 32 * s, frameCol || (c.house === 'li' ? '#e8d4a8' : c.state === '秦' ? '#d8c8c8' : '#d4dcc4'));
+  const im = illustratedPortrait(c);
+  if (im) return queuePortrait(im, x, y, 32 * s);
   g.drawImage(portrait(c), x, y, 32 * s, 32 * s);
 }
 function opCol(v) { return v >= 40 ? '#276a32' : v >= 10 ? '#3f6a1c' : v > -10 ? '#5f5236' : v > -40 ? '#96461a' : '#a0301f'; }
@@ -9057,8 +9082,9 @@ function drawSheet(m) {
   btn(158, 22, 16, 14, '×', 'dark', () => drop(m));
   const me = c.id === W.player, live = alive(c), away = live && !me && !inCity(c);
   // their portrait sits in front of where they live (质子府, 吕府, …)
-  drawPortrait(c, 10, 26, 2);
-  if (SCN_LOCS.has(c.loc) && !away) { g.drawImage(scene(c.loc), 58, 20, 64, 64, 10, 26, 64, 64); g.drawImage(portrait(c), 10, 26, 64, 64); }
+  const faceArt = drawPortrait(c, 10, 26, 2);
+  if (faceArt) faceArt.cutouts = [[10, 80, 64, 10]];
+  if (SCN_LOCS.has(c.loc) && !away) { g.drawImage(scene(c.loc), 58, 20, 64, 64, 10, 26, 64, 64); if (!faceArt) g.drawImage(portrait(c), 10, 26, 64, 64); }
   if (characterArtKey(c)) { btnFrame(10, 80, 64, 10, 'dark'); txt('查看立绘 ›', 42, 85, 5.5, '#fff6dc', 'center', null); hit(10, 26, 64, 64, () => openCharacterArt(c)); }
   // this season's energy, next to the close button
   const nPip = m.ro ? 0 : Math.max(apMax(p), W.ap);
@@ -9330,9 +9356,12 @@ function drawTree(m, focus) {
   const drawCat = (c, cx, cy) => {
     const x = R(cx - hp), y = R(cy), me = c.id === W.player, blood = focus ? c.sur === focus.sur : c.house === 'li';
     if (x < vx - 40 || x > vx + vw + 8 || y < vy - 50 || y > vy + vh + 8) return;
-    drawPortrait(c, x, y, k, me ? PAL.gold : !alive(c) ? '#b8b0a8' : blood ? '#e8d4a8' : '#d4dcc4');
+    const faceArt = drawPortrait(c, x, y, k, me ? PAL.gold : !alive(c) ? '#b8b0a8' : blood ? '#e8d4a8' : '#d4dcc4');
     if (me) { rect(x - 2, y - 2, PS + 4, 1, PAL.lacq); rect(x - 2, y + PS + 1, PS + 4, 1, PAL.lacq); rect(x - 2, y - 2, 1, PS + 4, PAL.lacq); rect(x + PS + 1, y - 2, 1, PS + 4, PAL.lacq); }
-    if (c === hn) { if (z) { rect(x + PS - 4, y - 1, 5, 5, OUT); rect(x + PS - 3, y, 3, 3, PAL.gold); } else chip('嗣', x + PS - 9, y - 3, HEIRC); }
+    if (c === hn) {
+      if (z) { rect(x + PS - 4, y - 1, 5, 5, OUT); rect(x + PS - 3, y, 3, 3, PAL.gold); if (faceArt) faceArt.cutouts = [[x + PS - 4, y - 1, 5, 5]]; }
+      else { const cw = chip('嗣', x + PS - 9, y - 3, HEIRC); if (faceArt) faceArt.cutouts = [[x + PS - 9, y - 3, cw, 10]]; }
+    }
     if (!z) { const label = blood ? (c.disp || c.name) : nm(c); txt(label.length > 4 ? label.slice(0, 4) : label, x + hp, y + 38, 5.5, alive(c) ? '#3a2418' : '#6a6058', 'center', null, 1, 1); }
     const hx = Math.max(x, vx), hy = Math.max(y, vy), hw = Math.min(x + PS, vx + vw) - hx, hh = Math.min(y + PS, vy + vh) - hy;
     if (hw > 4 && hh > 4) hit(hx, hy, hw, hh, z ? () => { m.zoom = false; m.center = c.id; } : () => openSheet(c.id, m.ro));
@@ -10355,7 +10384,7 @@ function drawQR(qx, qy) {
 }
 function makeShare(title) {
   try {
-    TQ.length = 0; g.clearRect(0, 0, W_, H);
+    TQ.length = 0; ARTQ.length = 0; g.clearRect(0, 0, W_, H);
     ['#3a1418', '#4a1c1e', '#5a2624', '#6a302a'].forEach((c, i) => { g.fillStyle = c; g.fillRect(0, i * 80, W_, 80); });
     txt('一喵天下', 90, 20, 14, '#ffe08a'); txt(title, 90, 40, 9, '#f2ead4');
     const p = P(), A = W.a3 || {};
@@ -10370,6 +10399,7 @@ function makeShare(title) {
     txt(SHARE_URL.replace(/^https?:\/\//, '').replace(/\/$/, ''), 50, 303, 6, '#9fe8ff', 'left');
     const S2 = 4, out = mk(W_ * S2, H * S2), o = out.getContext('2d'), k0 = K;
     o.imageSmoothingEnabled = false; o.drawImage(low, 0, 0, W_ * S2, H * S2);
+    presentArtwork(o, S2);
     K = S2;
     for (const t of TQ) { const c = textSprite(t), w_ = c.w - 2 * c.pad; o.globalAlpha = t.alpha; o.drawImage(c.cv, R(t.x * K - c.pad - (t.align === 'center' ? w_ / 2 : t.align === 'right' ? w_ : 0)), R(t.y * K - c.h / 2)); }
     o.globalAlpha = 1; K = k0; TQ.length = 0; g.clearRect(0, 0, W_, H);
@@ -10421,8 +10451,7 @@ function renderCover() {
 function present() {
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = false; ctx.globalAlpha = 1;
   ctx.drawImage(low, 0, 0, W_, H, 0, 0, W_ * K, H * K);
-  for (const a of ARTQ) ctx.drawImage(a.im, a.x * K, a.y * K, a.w * K, a.h * K);
-  ARTQ.length = 0;
+  presentArtwork(ctx, K);
   for (const t of TQ) {
     const c = textSprite(t), tw_ = c.w - 2 * c.pad;
     if (t.clip) { ctx.save(); ctx.beginPath(); ctx.rect(t.clip[0] * K, t.clip[1] * K, t.clip[2] * K, t.clip[3] * K); ctx.clip(); }
