@@ -21,6 +21,14 @@ const hook = `const reviewSetItem = Storage.prototype.setItem; window.__review =
   familyTree() { MODAL.length=0; W.queue=[]; openFamily(); render(); },
   share() { makeShare('狸家'); },
   cast(id) { MODAL.length=0; W.queue=[]; openSheet(id || W.flags.prologueKids[1]); render(); },
+  deadCast() { const c=C(W.flags.prologueKids[1]); c.dead=W.t; MODAL.length=0; W.queue=[]; openSheet(c.id); render(); },
+  deadFacePixels() {
+    const c=C(W.flags.prologueKids[1]), im=illustratedPortrait(c), same=im===illustratedPortrait(c);
+    const pixels=im.getContext('2d').getImageData(0,0,im.width,im.height).data;
+    let visible=0, colored=0, maxAlpha=0;
+    for(let i=0;i<pixels.length;i+=4) { maxAlpha=Math.max(maxAlpha,pixels[i+3]); if(pixels[i+3]>100) { visible++; if(Math.max(pixels[i],pixels[i+1],pixels[i+2])-Math.min(pixels[i],pixels[i+1],pixels[i+2])>2) colored++; } }
+    return {visible,colored,maxAlpha,same};
+  },
   missingCG() { MODAL.length=0; W.queue=[]; ART_IMAGES.delete('art/cg/qihuo.webp'); W.art.seen.qihuo={t:W.t,title:'奇货'}; openCG('qihuo'); render(); },
   artFailed: () => !!ART_IMAGES.get('art/cg/qihuo.webp').failed,
   journal() { MODAL.length = 0; openChronicle(); render(); },
@@ -141,6 +149,10 @@ const server = http.createServer((req, res) => {
     await page.waitForFunction(() => window.__review.facesReady());
     await shot('faces-clear');
     await page.mouse.wheel(0,190); await page.waitForTimeout(150); await shot('faces-scrolled');
+    await page.evaluate(() => window.__review.deadCast()); await shot('face-deceased');
+    const deadFace=await page.evaluate(() => window.__review.deadFacePixels());
+    assert.ok(deadFace.visible>1000); assert.equal(deadFace.colored,0);
+    assert.ok(deadFace.maxAlpha>=160 && deadFace.maxAlpha<=170); assert.ok(deadFace.same);
     await page.evaluate(() => window.__review.familyTree()); await shot('faces-family');
     await page.evaluate(() => window.__review.share());
     await page.getByAltText('战绩').waitFor();

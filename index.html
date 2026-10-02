@@ -8799,7 +8799,13 @@ function illustratedPortrait(c) {
   const im = artImage('art/faces/' + id + '.webp');
   if (!im.complete || !im.naturalWidth) return null;
   if (c.dead === null) return im;
-  if (!ART_DEAD.has(id)) ART_DEAD.set(id, paint(192, 192, gx => { gx.filter = 'grayscale(1)'; gx.globalAlpha = .65; gx.drawImage(im, 0, 0, 192, 192); }));
+  if (!ART_DEAD.has(id)) {
+    // paint() supplies the game's pixel Grid, not a CanvasRenderingContext2D.
+    const face = mk(192, 192), gx = face.getContext('2d');
+    gx.filter = 'grayscale(1)'; gx.globalAlpha = .65;
+    gx.drawImage(im, 0, 0, 192, 192);
+    ART_DEAD.set(id, face);
+  }
   return ART_DEAD.get(id);
 }
 // Draw illustrated faces at display resolution, with the same viewport and badges as the pixel UI.
