@@ -12,6 +12,7 @@ const hook = `const reviewSetItem = Storage.prototype.setItem; window.__review =
   world: () => JSON.parse(JSON.stringify(W)),
   cgStart() { closeUtility(); newGame(); state='game'; saveGame(); pumpQueue(); render(); },
   modal: () => top() && { type:top().type, title:top().e && top().e.title, id:top().id },
+  cgHit: () => HITS[0].r,
   artReady: path => { const im=ART_IMAGES.get(path); return !!(im && im.complete && im.naturalWidth); },
   cgSeen: () => Object.keys(W.art.seen),
   artGallery() { MODAL.length=0; W.queue=[]; openArtGallery(); render(); },
@@ -47,6 +48,7 @@ const server = http.createServer((req, res) => {
     const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     const tap = async (x, y) => { const box = await page.locator('#c').boundingBox(); await page.mouse.click(box.x + box.width * x / 180, box.y + box.height * y / 320); };
+    const tapCG = async () => { const [x,y,w,h] = await page.evaluate(() => window.__review.cgHit()); await tap(x+w/2,y+h/2); };
     const shot = async name => { await page.evaluate(() => document.fonts.ready); await page.screenshot({ path: path.join(out, name + '.png') }); };
     await page.goto('http://127.0.0.1:' + server.address().port + '/review.html');
     await page.waitForFunction(() => window.__gameBooted);
@@ -113,10 +115,8 @@ const server = http.createServer((req, res) => {
     await page.waitForFunction(() => window.__review.artReady('art/cg/prologue.webp'));
     assert.equal((await page.evaluate(() => window.__review.modal())).type,'cg');
     await shot('cg-prologue');
-    await tap(90,248); await page.getByRole('dialog',{name:'三问'}).waitFor();
-    await page.waitForFunction(() => document.querySelector('.art-panel img').naturalWidth === 1280);
-    await shot('cg-expanded');
-    await page.keyboard.press('Escape'); await page.waitForTimeout(100); await tap(90,282);
+    assert.equal(await page.getByRole('dialog').count(),0);
+    await tapCG();
     assert.equal((await page.evaluate(() => window.__review.modal())).title,'三问');
     await shot('cg-original-choice');
     await page.evaluate(() => window.__review.cast());
@@ -126,18 +126,20 @@ const server = http.createServer((req, res) => {
     await page.waitForFunction(() => window.__review.artReady('art/portraits/li2.webp'));
     await shot('character-standing');
     await page.setViewportSize({width:320,height:568}); await shot('character-small-phone');
-    await tap(90,264); await page.getByRole('dialog').waitFor();
-    assert.ok(await page.locator('.art-panel').evaluate(el => el.getBoundingClientRect().bottom <= innerHeight));
-    await page.keyboard.press('Escape');
+    assert.equal(await page.getByRole('dialog').count(),0);
+    await tap(90,302);
+    assert.equal((await page.evaluate(() => window.__review.modal())).type,'sheet');
+    await page.waitForTimeout(100); await tap(40,55); await page.waitForTimeout(100); await tap(166,29);
+    assert.equal((await page.evaluate(() => window.__review.modal())).type,'sheet');
     await page.evaluate(() => window.__review.artGallery()); await shot('art-gallery');
     assert.deepEqual(await page.evaluate(() => window.__review.cgSeen()),['prologue']);
     await page.route('**/art/cg/qihuo.webp',route=>route.abort());
     await page.evaluate(() => window.__review.missingCG());
     await page.waitForFunction(() => window.__review.artFailed()); await shot('cg-missing-image');
-    await page.waitForTimeout(100); await tap(90,282);
+    await page.waitForTimeout(100); await tapCG();
     assert.notEqual((await page.evaluate(() => window.__review.modal()))?.type,'cg');
     assert.equal(await page.locator('#game-err').count(), 0);
     assert.deepEqual(errors, []);
-    console.log('PASS: real browser; save/recovery/journal, CG pause and original choices, expanded artwork, portrait sheet/standing view, gallery locks, failed-image fallback, 320px layout and keyboard dismissal.');
+    console.log('PASS: real browser; save/recovery/journal, paper CG window and original choices, portrait sheet/standing view and both close buttons, gallery locks, failed-image fallback, 320px layout.');
   } finally { if (browser) await browser.close(); await new Promise(r => server.close(r)); }
 })().catch(e => { console.error(e); process.exitCode = 1; });
