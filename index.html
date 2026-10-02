@@ -1688,7 +1688,7 @@ EV.zhaokuo = () => ({ title: '纸上谈兵', who: ['zhaokuo'],
 EV.meiji = () => {
   W.flags.meijiDone = true;
   const yr = C('yiren'), zj = C('zhaoji'), lv = C('lv'), p = P();
-  if (!alive(yr) || !alive(zj) || yr.sp) return null;
+  if (!alive(yr) || !alive(zj) || yr.sp || zj.sp === W.player) return null;
   // a bride for a prince: young enough to give him a son; your daughters first, then your sisters, youngest first; never your mother
   const tier = c => (c.dad === p.id || c.mom === p.id) ? 0 : ((p.dad && c.dad === p.dad) || (p.mom && c.mom === p.mom)) ? 1 : 2;
   const girls = adults(kinPool()).filter(c => c.female && !c.sp && !c.preg && c.id !== W.player && c.id !== p.mom && ageOf(c) <= 35)
@@ -1723,14 +1723,17 @@ function liBrideWed(b) {
   if (b.preg) Object.assign(b.preg, ZHENG); else { b.preg = null; setPreg(b, zhengFather(b, cands), Object.assign({}, ZHENG)); }
 }
 function zhaojiWed() {
+  if (C('zhaoji').sp === W.player) return;
   W.flags.meijiDone = true;
   const yr = C('yiren'), zj = C('zhaoji'), p = P();
   // an old save may have her married already: that marriage ends, and her husband takes it badly
   const was = zj.sp && zj.sp !== 'yiren' && C(zj.sp);
   if (was) { divorce(zj, was, true); addOp(was, p, -20); }
-  // This game's hidden premise: Zhao Ji's Zheng is Lu's child. The player must discover it.
+  // Existing conception records take precedence over the default historical father.
   marry(zj, yr); zj.loc = 'hostage'; zj.role = 'noble'; zj.robe = 'qinPoor';
-  if (zj.preg) Object.assign(zj.preg, ZHENG, { f: 'lv', sp: 'yiren' }); else setPreg(zj, 'lv', Object.assign({}, ZHENG));
+  if (!C('zheng')) {
+    if (zj.preg) Object.assign(zj.preg, ZHENG); else setPreg(zj, 'lv', Object.assign({}, ZHENG));
+  }
 }
 EV.changping = () => {
   // the army takes grain where it finds it: a hoard has a fair chance of being carted off first
@@ -5379,7 +5382,10 @@ function ensureZheng() {
   const yr = C('yiren'); if (!alive(yr)) return;
   let m = yr.sp && C(yr.sp); if (!alive(m) || !m.female) m = C('zhaoji');
   if (!alive(m)) return;
+  // A different marriage and its children are not a missing historical birth.
+  if (m.sp && m.sp !== yr.id) return;
   if (!yr.sp && !m.sp) marry(m, yr);
+  if (m.preg) { Object.assign(m.preg, ZHENG); return; }
   const bio = m.id === 'zhaoji' ? C('lv') : yr;
   mkc({ id: 'zheng', name: '政', disp: '政', sur: '嬴', born: 12, mom: m.id, dad: 'yiren', bio: bio.id, g: breed(m.g, bio.g, Math.random, 'M'), female: false,
     loc: m.loc === 'home' ? 'hostage' : m.loc, role: 'noble', robe: 'qin', state: '秦', hist: true, immortal: true, dieT: HISTD.zheng, tr: randPers(Math.random, 2) });
@@ -8770,11 +8776,27 @@ function zhengAppearance(mom, dad) {
   }
   return null;
 }
+function playerBloodZheng(c) {
+  if (!c || c.id !== 'zheng' || !P()) return false;
+  const ancestors = root => {
+    const ids = new Set(), todo = [root];
+    while (todo.length) {
+      const x = todo.pop(); if (!x || ids.has(x.id)) continue;
+      ids.add(x.id); todo.push(C(x.mom), C(x.bio || x.dad));
+    }
+    return ids;
+  };
+  const player = ancestors(P());
+  return [...ancestors(c)].some(id => player.has(id));
+}
 function fixStoryDesign(c, key) {
   if (key === 'zheng') {
     const mom = C(c.mom), bio = C(c.bio || c.dad);
-    // Other/legacy family branches retain their actual inheritance and procedural portrait.
-    if (!mom || !bio || !(mom.id === 'zhaoji' && bio.id === 'lv' || mom.flags.artIdentity === 'li2' && bio.id === 'yiren')) return;
+    // Player-related Zheng reuses the illustration without changing inherited genes.
+    if (!mom || !bio || !(mom.id === 'zhaoji' && bio.id === 'lv' || mom.flags.artIdentity === 'li2' && bio.id === 'yiren')) {
+      if (playerBloodZheng(c)) { c.flags.artIdentity = key; c.flags.artDesign = 2; }
+      return;
+    }
     const appearance = zhengAppearance(mom, bio); if (!appearance) return;
     for (const [locus, alleles] of Object.entries(appearance)) c.g[locus] = alleles.slice();
     c.seed = hashStr('story-art:zheng'); c.flags.artIdentity = key; c.flags.artDesign = 2;
@@ -8807,8 +8829,8 @@ function characterArtKey(c) {
   let id = c.flags && c.flags.artIdentity;
   if (!id && c.hist && ART_CAST[c.id]) id = c.id;
   if (!id || !ART_CAST[id]) return null;
-  // New artwork must never overwrite a legacy character's different coat.
-  if (['li2', 'zheng'].includes(id) && (!c.flags || c.flags.artDesign !== 2)) return null;
+  // Player-related Zheng explicitly reuses the illustration, including legacy saves.
+  if (['li2', 'zheng'].includes(id) && (!c.flags || c.flags.artDesign !== 2) && !playerBloodZheng(c)) return null;
   if (id === 'chengjiao' && coatName(phenotype(c.g)) !== '黑猫') return null;
   if (id === 'zheng') return ageOf(c) < 3 ? 'zheng-baby' : ageOf(c) < 16 ? 'zheng-young' : 'zheng';
   if (ageOf(c) < 16) return null;
