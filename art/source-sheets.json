@@ -258,5 +258,25 @@
       "jingke",
       "xianyang"
     ]
+  },
+  {
+    "sheet": "siblings-cast",
+    "cols": 3,
+    "rows": 1,
+    "ids": [
+      "li2",
+      "li2-queen",
+      "li3"
+    ]
+  },
+  {
+    "sheet": "siblings-prologue",
+    "cols": 1,
+    "rows": 1,
+    "kind": "cg",
+    "inset": 0,
+    "ids": [
+      "prologue"
+    ]
   }
 ]

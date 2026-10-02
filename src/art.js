@@ -3,7 +3,7 @@ const ART_IMAGES = new Map(), ART_DEAD = new Map(), ARTQ = [];
 const STORY_GENES = {
   li1: { O: ['o'], A: ['A', 'a'], S: ['S', 's'] },
   li2: { O: ['o', 'o'], B: ['B', 'B'], A: ['A', 'a'], S: ['S', 's'], L: ['L', 'L'] },
-  li3: { O: ['O'], A: ['A', 'a'] },
+  li3: { O: ['o'], A: ['A', 'a'], S: ['S', 's'] },
   chengjiao: { O: ['o'] },
 };
 const STORY_LOOK_LOCI = ['O', 'B', 'D', 'A', 'T', 'Sp', 'S', 'W', 'C', 'I', 'L', 'eye'];
@@ -51,7 +51,7 @@ function fixStoryDesign(c, key) {
   const genes = Object.assign({ B: ['B', 'b'], D: ['D', 'd'], A: ['a', 'a'], T: ['Tm', 'tb'], Sp: ['sp', 'sp'],
     S: ['s', 's'], W: ['w', 'w'], C: ['C', 'C'], I: ['i', 'i'], L: ['L', 'l'], eye: [.38, .38] }, STORY_GENES[key]);
   for (const [locus, alleles] of Object.entries(genes)) c.g[locus] = alleles.slice();
-  c.seed = hashStr('story-art:' + key); c.flags.artIdentity = key; c.flags.artDesign = 2;
+  c.seed = hashStr('story-art:' + key); c.flags.artIdentity = key; c.flags.artDesign = key === 'li3' ? 3 : 2;
 }
 function artDefaults() {
   const seen = W.art && W.art.seen;
@@ -75,6 +75,7 @@ function characterArtKey(c) {
   if (!id || !ART_CAST[id]) return null;
   // Player-related Zheng explicitly reuses the illustration, including legacy saves.
   if (['li2', 'zheng'].includes(id) && (!c.flags || c.flags.artDesign !== 2) && !playerBloodZheng(c)) return null;
+  if (id === 'li3' && c.flags.artDesign !== 3) return null;
   if (id === 'chengjiao' && coatName(phenotype(c.g)) !== '黑猫') return null;
   if (id === 'zheng') return ageOf(c) < 3 ? 'zheng-baby' : ageOf(c) < 16 ? 'zheng-young' : 'zheng';
   if (ageOf(c) < 16) return null;
