@@ -7,6 +7,7 @@ import argparse
 import json
 from pathlib import Path
 from PIL import Image, ImageOps, ImageDraw, ImageFilter, ImageChops
+from portrait_crops import save_face
 
 p = argparse.ArgumentParser(description=__doc__)
 p.add_argument('sheet')
@@ -55,9 +56,7 @@ for i, name in enumerate(spec['ids']):
         tile = Image.new('RGBA', (384, 512))
         tile.alpha_composite(figure, ((384 - figure.width)//2, 496 - figure.height))
         tile.save(folder / (name + '.webp'), 'WEBP', quality=91, method=6)
-        face_box = (64, 140, 320, 396) if name == 'zheng-baby' else (64, 24, 320, 280)
-        tile.crop(face_box).resize((192, 192), Image.Resampling.LANCZOS).save(
-            Path('art/faces') / (name + '.webp'), 'WEBP', quality=91, method=6)
+        save_face(tile, name)
     else:
         tile = ImageOps.fit(tile, (1280, 720), method=Image.Resampling.LANCZOS)
         tile.save(folder / (name + '.webp'), 'WEBP', quality=90, method=6)
