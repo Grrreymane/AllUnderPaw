@@ -77,10 +77,25 @@ for (let i = 0; i < SCEN.length; i++) {
   startScen(i); settleTest();
   check(W.t === SCEN[i].t, 'Scenario reaches its intended date: ' + SCEN[i].n);
   if (i) check(W.chronicle.from === W.t && !W.chronicle.events.length, 'Later scenario does not claim stand-in choices as player memories');
+  if (i) {
+    check(W.fish === SCEN[i].fish, 'Preset starts with exact published funds');
+    check(C('zheng').mom === 'zhaoji' && C('zheng').bio === 'lv' && C('zheng').dad === 'yiren', 'Preset has canonical hidden parentage');
+    check(!W.flags.liBride && C(W.flags.prologueKids[1]).sp !== 'yiren', 'Preset does not marry the Li sister to Yiren');
+    check(!W.art || !Object.keys(W.art.seen).length, 'Preset does not unlock unseen CG');
+    check(!W.a3.banBy && W.lastEcon === null, 'Preset has no accidental exile or stale economic report');
+    if (i === 2) check(W.a2.xiang === 'lv' && W.a2.zhongfu === 'lv' && W.rank === 2, 'Lu holds the historical offices, not the player');
+    if (i >= 4) check(W.a3.uni === 164 && A3_RK.every(k => W.realm[k].fallen === A3_REALM[k].fallT), 'Unification preset follows historical catalogue dates');
+  }
   invariant(); openObjective(); render(); MODAL.length = 0; openChronicle(); render(); MODAL.length = 0;
   for (let season = 0; season < 12; season++) { W.ap = Math.max(1, W.ap); tabActions('market')[0].fn(); settleTest(); endSeason(); settleTest(); }
   invariant(); check(saveGame(), 'Scenario saves'); const t = W.t; check(loadGame() && W.t === t, 'Scenario reloads');
 }
+// Loading a later preset must not advance seasons or reuse a previously mutated world.
+const savedEndSeason=endSeason;
+endSeason=()=>{throw Error('Preset selection must not simulate seasons');};
+startScen(2); const presetHead=W.player; W.fish=999999; C('zheng').mom=W.flags.prologueKids[1];
+startScen(2); check(W.fish===450 && W.player===presetHead && C('zheng').mom==='zhaoji','Preset loading deep-copies an immutable start');
+endSeason=savedEndSeason;
 startScen(3); settleTest();
 const previousKing = W.kingId; W.kingId = W.player;
 check(!chapterContext().text.includes('封列侯'), 'King receives a ruling objective rather than a minister reward');

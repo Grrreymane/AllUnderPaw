@@ -2,17 +2,40 @@
 const ART_IMAGES = new Map(), ART_DEAD = new Map(), ARTQ = [];
 const STORY_GENES = {
   li1: { O: ['o'], A: ['A', 'a'], S: ['S', 's'] },
-  li2: { O: ['o', 'o'], D: ['d', 'd'] },
+  li2: { O: ['o', 'o'], B: ['B', 'B'], A: ['A', 'a'], S: ['S', 's'], L: ['L', 'L'] },
   li3: { O: ['O'], A: ['A', 'a'] },
-  zheng: { O: ['o'] }, chengjiao: { O: ['o'] },
+  chengjiao: { O: ['o'] },
 };
+const STORY_LOOK_LOCI = ['O', 'B', 'D', 'A', 'T', 'Sp', 'S', 'W', 'C', 'I', 'L', 'eye'];
+function zhengAppearance(mom, dad) {
+  // Choose a real cross from these parents, preserving paternal/maternal allele order.
+  // Both routes have the same phenotype, not a cloned parental genome.
+  for (let seed = 1; seed <= 512; seed++) {
+    const inherited = breed(mom.g, dad.g, mulberry32(seed), 'M'), p = phenotype(inherited);
+    const legal = Object.keys(ALLELES).concat(['W']).every(k => dad.g[k].includes(inherited[k][0]) && mom.g[k].includes(inherited[k][1]));
+    if (legal && p.eu === 'black' && p.orange === 'none' && p.agouti && p.white === 1 && p.tabbyType === 'Tm' && p.eye === 'gold'
+        && inherited.D.includes('d') && !p.allWhite && !p.silver && !p.point && !p.long) {
+      return Object.fromEntries(STORY_LOOK_LOCI.map(k => [k, inherited[k]]));
+    }
+  }
+  return null;
+}
 function fixStoryDesign(c, key) {
+  if (key === 'zheng') {
+    const mom = C(c.mom), bio = C(c.bio || c.dad);
+    // Other/legacy family branches retain their actual inheritance and procedural portrait.
+    if (!mom || !bio || !(mom.id === 'zhaoji' && bio.id === 'lv' || mom.flags.artIdentity === 'li2' && bio.id === 'yiren')) return;
+    const appearance = zhengAppearance(mom, bio); if (!appearance) return;
+    for (const [locus, alleles] of Object.entries(appearance)) c.g[locus] = alleles.slice();
+    c.seed = hashStr('story-art:zheng'); c.flags.artIdentity = key; c.flags.artDesign = 2;
+    return;
+  }
   if (!STORY_GENES[key]) return;
   // Only appearance loci are fixed. Aptitude, health, personality and true parentage stay procedural.
   const genes = Object.assign({ B: ['B', 'b'], D: ['D', 'd'], A: ['a', 'a'], T: ['Tm', 'tb'], Sp: ['sp', 'sp'],
     S: ['s', 's'], W: ['w', 'w'], C: ['C', 'C'], I: ['i', 'i'], L: ['L', 'l'], eye: [.38, .38] }, STORY_GENES[key]);
   for (const [locus, alleles] of Object.entries(genes)) c.g[locus] = alleles.slice();
-  c.seed = hashStr('story-art:' + key); c.flags.artIdentity = key;
+  c.seed = hashStr('story-art:' + key); c.flags.artIdentity = key; c.flags.artDesign = 2;
 }
 function artDefaults() {
   const seen = W.art && W.art.seen;
@@ -34,8 +57,9 @@ function characterArtKey(c) {
   let id = c.flags && c.flags.artIdentity;
   if (!id && c.hist && ART_CAST[c.id]) id = c.id;
   if (!id || !ART_CAST[id]) return null;
-  // Legacy saves keep their original genes and descendants. Never draw a black 政 over a different old coat.
-  if (['zheng', 'chengjiao'].includes(id) && coatName(phenotype(c.g)) !== '黑猫') return null;
+  // New artwork must never overwrite a legacy character's different coat.
+  if (['li2', 'zheng'].includes(id) && (!c.flags || c.flags.artDesign !== 2)) return null;
+  if (id === 'chengjiao' && coatName(phenotype(c.g)) !== '黑猫') return null;
   if (id === 'zheng') return ageOf(c) < 3 ? 'zheng-baby' : ageOf(c) < 16 ? 'zheng-young' : 'zheng';
   if (ageOf(c) < 16) return null;
   if (id === 'yiren' && c.role === 'ruler') return 'yiren-king';
@@ -94,6 +118,7 @@ const CG_EVENT = {
 };
 function storyCGFor(event, e) {
   if (SAVE_SUSPENDED || CATCHUP) return null;
+  if (event === 'born' && e.title === '政' && (e.who || []).includes('zheng')) event = 'zhengborn';
   if (event === 'zhengborn') {
     const z = C('zheng'), mom = z && C(z.mom);
     if (!z || !characterArtKey(z) || !mom) return null;

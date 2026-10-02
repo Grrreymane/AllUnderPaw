@@ -20,6 +20,8 @@ const hook = `const reviewSetItem = Storage.prototype.setItem; window.__review =
   castGallery() { MODAL.length=0; W.queue=[]; openCastGallery(); render(); },
   familyTree() { MODAL.length=0; W.queue=[]; openFamily(); render(); },
   share() { makeShare('狸家'); },
+  scenarios() { closeUtility(); MODAL.length=0; state='title'; scenOpen=true; render(); },
+  birth(branch) { newGame(); state='game'; W.queue=[]; if(branch==='li')liBrideWed(C(W.flags.prologueKids[1])); else zhaojiWed(); giveBirth(branch==='li'?C(W.flags.prologueKids[1]):C('zhaoji')); pumpQueue(); render(); },
   cast(id) { MODAL.length=0; W.queue=[]; openSheet(id || W.flags.prologueKids[1]); render(); },
   deadCast() { const c=C(W.flags.prologueKids[1]); c.dead=W.t; MODAL.length=0; W.queue=[]; openSheet(c.id); render(); },
   deadFacePixels() {
@@ -159,6 +161,18 @@ const server = http.createServer((req, res) => {
     assert.ok(await page.getByAltText('战绩').evaluate(im => im.naturalWidth === 720));
     await page.reload(); await page.waitForFunction(() => window.__gameBooted);
     await page.evaluate(() => window.__review.start(0));
+    for(const branch of ['zhao','li']) {
+      await page.evaluate(b=>window.__review.birth(b),branch);
+      await page.waitForFunction(b=>window.__review.artReady('art/cg/zheng-'+b+'.webp'),branch);
+      assert.equal((await page.evaluate(()=>window.__review.modal())).id,'zheng-'+branch);
+      await shot('birth-'+branch);
+    }
+    await page.evaluate(()=>window.__review.scenarios()); await shot('scenario-presets');
+    await tap(90,139);
+    const preset=await page.evaluate(()=>window.__review.world());
+    assert.equal(preset.t,62);assert.equal(preset.fish,450);assert.equal(preset.chars.zheng.mom,'zhaoji');
+    assert.equal(preset.a2.xiang,'lv');assert.equal(preset.rank,2);
+    await shot('preset-247');
     await page.route('**/art/cg/qihuo.webp',route=>route.abort());
     await page.evaluate(() => window.__review.missingCG());
     await page.waitForFunction(() => window.__review.artFailed()); await shot('cg-missing-image');

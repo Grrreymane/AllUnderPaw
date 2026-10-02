@@ -213,5 +213,50 @@
     ],
     "kind": "cg",
     "inset": 0
+  },
+  {
+    "sheet": "bloodline-cast",
+    "cols": 2,
+    "rows": 2,
+    "ids": [
+      "li2",
+      "li2-queen",
+      "zheng",
+      "zheng-young"
+    ]
+  },
+  {
+    "sheet": "bloodline-baby",
+    "cols": 1,
+    "rows": 1,
+    "ids": [
+      "zheng-baby"
+    ]
+  },
+  {
+    "sheet": "bloodline-cg-a",
+    "cols": 2,
+    "rows": 2,
+    "kind": "cg",
+    "inset": 0,
+    "ids": [
+      "prologue",
+      "zheng-zhao",
+      "zheng-li",
+      "young-king"
+    ]
+  },
+  {
+    "sheet": "bloodline-cg-b",
+    "cols": 2,
+    "rows": 2,
+    "kind": "cg",
+    "inset": 0,
+    "ids": [
+      "guanli",
+      "qingsuan",
+      "jingke",
+      "xianyang"
+    ]
   }
 ]
