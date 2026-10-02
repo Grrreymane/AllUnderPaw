@@ -6,7 +6,7 @@ const root = path.resolve(__dirname, '..');
 const file = path.join(root, 'index.html');
 const original = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
 let html = original;
-for (const name of ['art-manifest', 'art', 'dynasty', 'persistence']) {
+for (const name of ['art-manifest', 'art', 'dynasty', 'persistence', 'scenario-presets']) {
   const start = '// ==== source:src/' + name + '.js ====';
   const end = '// ==== end source:src/' + name + '.js ====';
   const a = html.indexOf(start), b = html.indexOf(end, a);
