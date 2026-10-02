@@ -59,7 +59,7 @@ check(Object.keys(W.art.seen).join() === 'prologue', 'Unknown and future gallery
 for (const id of Object.keys(ART_CAST)) for (const folder of ['portraits','faces']) check(fs.existsSync(path.join('art',folder,id+'.webp')), 'Missing '+folder+'/'+id);
 for (const id of Object.keys(STORY_CG)) check(fs.existsSync(path.join('art','cg',id+'.webp')), 'Missing CG '+id);
 // Exercise both real birth paths, not only isolated character creation.
-newGame(); state='game'; zhaojiWed(); check(C('zhaoji').preg.f === 'lv','Zhao Ji pregnancy always belongs to Lu');
+newGame(); state='game'; zhaojiWed(); check(C('zhaoji').preg.f === 'lv','Historical default uses Lu when no conception exists');
 giveBirth(C('zhaoji')); const zhaoLook=coatSignature(C('zheng'));
 check(C('zheng').bio==='lv' && C('zheng').dad==='yiren','Birth keeps biological and legal father distinct');
 check(W.secrets.some(s=>s.kid==='zheng'),'Zhao route creates a discoverable secret');
@@ -69,5 +69,33 @@ check(C('zheng').bio==='yiren' && C('zheng').mom===liMom.id,'Li route can be the
 check(coatSignature(C('zheng'))===zhaoLook,'Both parent pairs produce the same visible coat');
 check(checkParentage(C('zheng'),liMom,C('yiren')).lvl===0,'Li route carries no false parentage clue');
 for(const locus of Object.keys(ALLELES).concat(['W'])) check(C('yiren').g[locus].includes(C('zheng').g[locus][0]) && liMom.g[locus].includes(C('zheng').g[locus][1]),'Li cross inherits legal alleles: '+locus);
-const legacyZ=C('zheng'); delete legacyZ.flags.artDesign; check(characterArtKey(legacyZ)===null,'Legacy Zheng does not receive incompatible new artwork');
+const legacyZ=C('zheng'); delete legacyZ.flags.artDesign; check(characterArtKey(legacyZ)==='zheng-baby','Player-related legacy Zheng also uses the existing illustration');
+// A real conception must survive the historical marriage; artwork must not rewrite player genes.
+newGame(); state='game';
+const loverMom=C('zhaoji'); setPreg(loverMom,W.player); const conception=JSON.parse(JSON.stringify(loverMom.preg));
+zhaojiWed();
+for(const k of ['f','sp','due']) check(loverMom.preg[k]===conception[k],'Marriage preserves conception field '+k);
+const originalBreed=breed; let bornGenome;
+breed=(...args)=>{ const g=originalBreed(...args); bornGenome=JSON.stringify(g); return g; };
+try { giveBirth(loverMom); } finally { breed=originalBreed; }
+const playerZ=C('zheng');
+check(playerZ.bio===W.player && playerZ.dad==='yiren','Player remains biological father of Yiren household Zheng');
+assert.deepEqual(JSON.parse(JSON.stringify(playerZ.g)),JSON.parse(bornGenome),'Existing Zheng illustration never replaces player-inherited genes'); checks++;
+check(characterArtKey(playerZ)==='zheng-baby' && storyCGFor('zhengborn',{})==='zheng-zhao','Player-related Zheng uses existing portrait and birth CG');
+check(W.secrets.some(s=>s.kid==='zheng'),'Player fatherhood remains a discoverable secret');
+// Fallback cannot invent another birth over a pregnancy that already has a real father.
+newGame(); state='game'; marry(C('zhaoji'),C('yiren')); setPreg(C('zhaoji'),W.player); W.t=12;
+const fallbackDue=C('zhaoji').preg.due; ensureZheng();
+check(!C('zheng') && C('zhaoji').preg.f===W.player && C('zhaoji').preg.due===fallbackDue,'Fallback waits for the real pregnancy');
+giveBirth(C('zhaoji')); check(C('zheng').bio===W.player,'Fallback pregnancy keeps player fatherhood at birth');
+// Married-to-player Zhao Ji has ordinary children, not a forced historical heir.
+newGame(); state='game'; const wife=C('zhaoji'); marry(wife,P()); setPreg(wife,W.player);
+const ordinaryPreg=JSON.stringify(wife.preg); W.t=12;
+check(EV.meiji()===null,'Historical bride event does not take the player wife');
+zhaojiWed(); ensureZheng();
+check(wife.sp===W.player && JSON.stringify(wife.preg)===ordinaryPreg && !C('zheng'),'Marriage and fallback leave the player family untouched');
+const priorKids=new Set(wife.kids); giveBirth(wife);
+const ordinaryKids=wife.kids.filter(id=>!priorKids.has(id)).map(C);
+check(ordinaryKids.length>0 && ordinaryKids.every(c=>c.id!=='zheng' && !c.hist && c.bio===W.player && c.dad===W.player && !characterArtKey(c)),'Player marriage produces ordinary children with ordinary portraits');
+ensureZheng(); check(!C('zheng') && wife.sp===W.player,'Fallback also leaves the family alone after delivery');
 console.log('PASS: '+checks+' art checks; fixed fur, CG callbacks/save/replay, branch matching, legacy saves, asset coverage.');

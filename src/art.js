@@ -20,11 +20,27 @@ function zhengAppearance(mom, dad) {
   }
   return null;
 }
+function playerBloodZheng(c) {
+  if (!c || c.id !== 'zheng' || !P()) return false;
+  const ancestors = root => {
+    const ids = new Set(), todo = [root];
+    while (todo.length) {
+      const x = todo.pop(); if (!x || ids.has(x.id)) continue;
+      ids.add(x.id); todo.push(C(x.mom), C(x.bio || x.dad));
+    }
+    return ids;
+  };
+  const player = ancestors(P());
+  return [...ancestors(c)].some(id => player.has(id));
+}
 function fixStoryDesign(c, key) {
   if (key === 'zheng') {
     const mom = C(c.mom), bio = C(c.bio || c.dad);
-    // Other/legacy family branches retain their actual inheritance and procedural portrait.
-    if (!mom || !bio || !(mom.id === 'zhaoji' && bio.id === 'lv' || mom.flags.artIdentity === 'li2' && bio.id === 'yiren')) return;
+    // Player-related Zheng reuses the illustration without changing inherited genes.
+    if (!mom || !bio || !(mom.id === 'zhaoji' && bio.id === 'lv' || mom.flags.artIdentity === 'li2' && bio.id === 'yiren')) {
+      if (playerBloodZheng(c)) { c.flags.artIdentity = key; c.flags.artDesign = 2; }
+      return;
+    }
     const appearance = zhengAppearance(mom, bio); if (!appearance) return;
     for (const [locus, alleles] of Object.entries(appearance)) c.g[locus] = alleles.slice();
     c.seed = hashStr('story-art:zheng'); c.flags.artIdentity = key; c.flags.artDesign = 2;
@@ -57,8 +73,8 @@ function characterArtKey(c) {
   let id = c.flags && c.flags.artIdentity;
   if (!id && c.hist && ART_CAST[c.id]) id = c.id;
   if (!id || !ART_CAST[id]) return null;
-  // New artwork must never overwrite a legacy character's different coat.
-  if (['li2', 'zheng'].includes(id) && (!c.flags || c.flags.artDesign !== 2)) return null;
+  // Player-related Zheng explicitly reuses the illustration, including legacy saves.
+  if (['li2', 'zheng'].includes(id) && (!c.flags || c.flags.artDesign !== 2) && !playerBloodZheng(c)) return null;
   if (id === 'chengjiao' && coatName(phenotype(c.g)) !== '黑猫') return null;
   if (id === 'zheng') return ageOf(c) < 3 ? 'zheng-baby' : ageOf(c) < 16 ? 'zheng-young' : 'zheng';
   if (ageOf(c) < 16) return null;
