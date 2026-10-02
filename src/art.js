@@ -54,8 +54,8 @@ function illustratedPortrait(c) {
 function drawArt(path, x, y, w, h) {
   const im = artImage(path);
   if (im.complete && im.naturalWidth) { ARTQ.push({ im, x, y, w, h }); return true; }
-  rect(x, y, w, h, '#171b26');
-  txt(im.failed ? '画面暂未载入' : '画卷展开中…', x + w / 2, y + h / 2, 7, '#d9c8a0', 'center', null);
+  rect(x, y, w, h, '#e8d4a8');
+  txt(im.failed ? '画面暂未载入' : '画卷展开中…', x + w / 2, y + h / 2, 7, LABC, 'center', null);
   return false;
 }
 const CG_EVENT = {
@@ -93,18 +93,19 @@ function openCG(id, replay = true) {
 }
 function drawCG(m) {
   const a = STORY_CG[m.id], entry = W.art.seen[m.id];
-  rect(0, 16, 180, 304, '#111521');
-  rect(12, 33, 156, 1, '#67563b');
-  txt('一 喵 天 下  ·  史 卷', 90, 29, 6, '#c9aa70', 'center', null);
-  txt(a.title, 90, 53, 14, '#f3dfac', 'center', '#282130');
-  txt(yearTxt(entry.t) + SEASON[entry.t % 4], 90, 69, 6, '#a3a6af', 'center', null);
-  rect(4, 82, 172, 99, '#8b7044');
-  drawArt('art/cg/' + m.id + '.webp', 6, 84, 168, 94.5);
-  const lines = wrapT(a.caption, 150, 8, 1);
-  lines.forEach((line, i) => txt(line, 90, 202 + i * 13, 8, '#e9ddc5', 'center', null, 1, 1));
-  btn(34, 239, 112, 19, '展开画卷', 'dark', () => openArtZoom('art/cg/' + m.id + '.webp', a.title));
-  btn(20, 270, 140, 24, m.replay ? '回到图鉴' : '继续剧情', 'gold', () => { drop(m); saveGame(); });
-  txt(m.replay ? '曾经的这一刻' : '已收入画卷图鉴', 90, 307, 5.5, '#a3a6af', 'center', null);
+  const x = 6, w = 168, lines = wrapT(a.caption, w - 16, 7, 1);
+  const h = 154 + lines.length * 11, y = R((H - h) / 2);
+  HITS = [];
+  g.globalAlpha = .55; rect(0, 0, W_, H, '#0a0810'); g.globalAlpha = 1;
+  paper(x, y, w, h);
+  rect(x + 30, y + 6, w - 60, 12, PAL.lacq); rect(x + 30, y + 17, w - 60, 1, PAL.jiang);
+  txt(a.title, 90, y + 12, 8, '#fff6dc', 'center', PAL.jiang);
+  txt(yearTxt(entry.t) + SEASON[entry.t % 4], 90, y + 26, 5.5, LABC, 'center', null);
+  rect(x + 5, y + 34, 158, 90, OUT);
+  drawArt('art/cg/' + m.id + '.webp', x + 6, y + 35, 156, 87.75);
+  lines.forEach((line, i) => txt(line, x + 8, y + 132 + i * 11, 7, '#2a1a10', 'left', null, 1, 1));
+  btn(x + 6, y + h - 23, w - 12, 17, m.replay ? '回到图鉴' : '继续剧情', 'dark', () => { drop(m); saveGame(); });
+  TANCH = offPaper(y, h);
 }
 SYS.modal.cg = drawCG;
 function openCharacterArt(c) {
@@ -114,13 +115,14 @@ function openCharacterArt(c) {
 }
 SYS.modal.characterArt = m => {
   const c = C(m.id), id = characterArtKey(c); if (!id) { drop(m); return; }
-  rect(0, 16, 180, 304, '#171b26');
-  rect(12, 23, 156, 1, '#806845');
-  txt(nm(c), 90, 39, 12, '#f3dfac', 'center', null);
-  txt(catLook(c).coat + ' · ' + (c.dead !== null ? '已故' : c.female ? '女' : '男'), 90, 56, 6, '#c1baa9', 'center', null);
-  drawArt('art/portraits/' + id + '.webp', 21, 64, 138, 184);
-  btn(24, 255, 132, 19, '查看完整立绘', 'dark', () => openArtZoom('art/portraits/' + id + '.webp', nm(c)));
-  btn(24, 285, 132, 21, '返回', 'gold', () => drop(m));
+  HITS = [];
+  g.globalAlpha = .55; rect(0, 0, W_, H, '#0a0810'); g.globalAlpha = 1;
+  paper(3, 18, 174, 300);
+  btn(158, 22, 16, 14, '×', 'dark', () => drop(m));
+  txt(nm(c), 90, 32, fitSize(nm(c), 120, 10), '#3a2418', 'center', null);
+  txt(catLook(c).coat + ' · ' + (c.dead !== null ? '已故' : c.female ? '女' : '男'), 90, 47, 6, LABC, 'center', null);
+  drawArt('art/portraits/' + id + '.webp', 12, 60, 156, 208);
+  btn(60, 294, 60, 16, '返回', 'dark', () => drop(m));
 };
 function openArtGallery() {
   if (!W.art) artDefaults();
@@ -135,15 +137,4 @@ function openArtGallery() {
 function openCastGallery() {
   const cats = Object.values(W.chars).filter(c => characterArtKey(c) && c.born <= W.t);
   openList('人物立绘', cats.map(c => ({ por: c, t: nm(c) + ' ›', s: catLook(c).coat + ' · ' + (c.dead !== null ? '已故' : ROLEN[c.role] || '狸家'), fn: () => openCharacterArt(c) })), { sub: '已登场 ' + cats.length + ' 位 · 点击查看全身像' });
-}
-function openArtZoom(path, title) {
-  closeUtility();
-  const root = document.createElement('div'), panel = document.createElement('div');
-  root.className = 'save-overlay'; panel.className = 'art-panel';
-  panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'true'); panel.setAttribute('aria-label', title);
-  const heading = document.createElement('h2'), im = document.createElement('img'), close = document.createElement('button');
-  heading.textContent = title; im.alt = title; im.src = path; close.textContent = '返回游戏'; close.onclick = closeUtility;
-  panel.appendChild(heading); panel.appendChild(im); panel.appendChild(close); root.appendChild(panel);
-  root.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); closeUtility(); } if (e.key === 'Tab') { e.preventDefault(); close.focus(); } });
-  document.body.appendChild(root); utilityEl = root; down = null; close.focus();
 }
