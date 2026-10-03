@@ -57,6 +57,11 @@ const hook = `const reviewSetItem = Storage.prototype.setItem; window.__review =
   eventHints() { return top().e.opts.map(o=>({t:o.t,hint:o.hint})); },
   historyDemo() { MODAL.length=0; startScen(3); MODAL.length=0; W.queue=[]; W.ap=5; W.fish=500; a3Jian('han'); openWorldEffects('han'); render(); },
   historyHeads() { MODAL.length=0;openGenerationHistory();render(); },
+  womenRoster() { MODAL.length=0;W.queue=[];peopleActions().find(a=>a.id==='womenRoster').fn();render(); },
+  womenProfile(id) { MODAL.length=0;W.queue=[];moveCity(cityOf(C(id)));openSheet(id);render(); },
+  womenArt(id) { openCharacterArt(C(id));render(); },
+  womenVisit() { MODAL.length=0;W.queue=[];W.ap=2;W.fish=100;womenVisit(C('baqing'),P());render(); },
+  womenBio(id) { MODAL.length=0;openWomenBio(id);render(); },
   conquest() { const k = A3_RK.find(k => !rFallen(k)); if (k) fallRealm(k, 'yield'); scenSettle(); MODAL.length = 0; },
   close() { MODAL.length = 0; closeUtility(); render(); },
   saves() { openSaveManager(); },
@@ -224,7 +229,22 @@ const server = http.createServer((req, res) => {
     await page.evaluate(()=>window.__review.chooseText('备礼解约'));
     const afterRelease=await page.evaluate(()=>window.__review.kinStatus());
     assert.equal(afterRelease.pledges[0].status,'released'); assert.equal(afterRelease.fish,beforeRelease.fish-60);
+    await page.evaluate(()=>{window.__review.start(5);window.__review.womenRoster();});
+    await page.waitForFunction(()=>window.__review.facesReady()); await shot('women-roster-small-phone');
+    const womenRows=await page.evaluate(()=>window.__review.listRows());
+    assert.equal(womenRows.length,8); assert.ok(womenRows.some(r=>r.t.includes('许负')));
+    assert.ok(womenRows.some(r=>r.t.includes('吕雉')&&r.s.includes('刘')));
+    await page.evaluate(()=>{window.__review.start(0);window.__review.womenProfile('baqing');});
+    await page.waitForFunction(()=>window.__review.artReady('art/faces/baqing.webp')); await shot('women-profile-small-phone');
+    await page.evaluate(()=>window.__review.womenArt('baqing'));
+    await page.waitForFunction(()=>window.__review.artReady('art/portraits/baqing.webp')); await shot('women-standing-small-phone');
+    await page.evaluate(()=>window.__review.womenVisit()); await shot('women-visit-small-phone');
+    await page.evaluate(()=>window.__review.chooseText('备礼'));
+    const womanWorld=await page.evaluate(()=>window.__review.world());
+    assert.equal(womanWorld.ap,1);assert.equal(womanWorld.fish,70);
+    assert.equal(womanWorld.chars.baqing.rel[womanWorld.player].op,10);
+    await page.evaluate(()=>window.__review.womenBio('baqing')); await shot('women-bio-small-phone');
     assert.equal(await page.locator('#game-err').count(),0); assert.deepEqual(errors,[]);
-    console.log('PASS: real browser; save/recovery/journal, paper CG and portraits, gallery locks, failed-image fallback, kinship pledges and succession consequences, actual history results, 320px layout.');
+    console.log('PASS: real browser; save/recovery/journal, paper CG and portraits, gallery locks, failed-image fallback, kinship pledges and succession consequences, actual history results, women roster/portraits/visits/biographies, 320px layout.');
   } finally { if (browser) await browser.close(); await new Promise(r => server.close(r)); }
 })().catch(e => { console.error(e); process.exitCode = 1; });

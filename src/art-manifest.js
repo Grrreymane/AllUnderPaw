@@ -1,5 +1,13 @@
 // LightAI artwork catalog. Paths are local; no service URLs or credentials are shipped.
 const ART_CAST = {
+  "ruji": "如姬",
+  "baqing": "巴清",
+  "liyuanmei": "李园妹",
+  "lvzhi": "吕雉",
+  "yuji": "虞姬",
+  "boji": "薄姬",
+  "qiji": "戚姬",
+  "xufu": "许负",
   "li1": "狸家长子",
   "li2": "狸家次女",
   "li3": "狸家幼子",
