@@ -278,5 +278,29 @@
     "ids": [
       "prologue"
     ]
+  },
+  {
+    "sheet": "women-a",
+    "cols": 2,
+    "rows": 2,
+    "ids": [
+      "ruji",
+      "baqing",
+      "liyuanmei",
+      "lvzhi"
+    ],
+    "inset": 0
+  },
+  {
+    "sheet": "women-b",
+    "cols": 2,
+    "rows": 2,
+    "ids": [
+      "yuji",
+      "boji",
+      "qiji",
+      "xufu"
+    ],
+    "inset": 18
   }
 ]

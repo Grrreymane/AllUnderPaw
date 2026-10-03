@@ -12,7 +12,8 @@ function fixture() {
   const b = mkc({ id: 'kpsecond', name: '次子', house: 'li', mom: w.id, dad: p.id, bio: p.id, born: 8, loc: 'home', tr: [] });
   p.kids.push(a.id, b.id); w.kids.push(a.id, b.id);
   const kg = mkc({ id: 'kpking', name: '王', born: -160, loc: 'xpalace', role: 'ruler', hist: true, immortal: true, tr: [] }); W.kingId = kg.id;
-  kinInvalidate(); return { p, g, w, a, b, kg };
+  // This fixture jumps twenty years without season hooks; bring scheduled arrivals up to date.
+  womenSync(); kinInvalidate(); return { p, g, w, a, b, kg };
 }
 let F = fixture();
 check(heirNow() === F.a, 'Baseline legal heir is eldest adult son');
