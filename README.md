@@ -40,7 +40,7 @@
 | 前221年 · 尾声 | 600 | 客卿 |
 | 前209年 · 乱世 | 800 | 在野 |
 
-预设不解锁未亲历 CG，不把准备阶段的选择写入玩家纪事；每次重新选择都会得到独立开局。预设快照在 `src/scenario-presets.js`，维护工具 `tools/build-scenarios.js` 只在开发时离线制作前史，发布运行时不会调用。
+预设不解锁未亲历 CG，不把准备阶段的选择写入玩家纪事；每次重新选择都会得到独立开局。预设快照在 `src/data/scenario-presets.js`，维护工具 `tools/build-scenarios.js` 只在开发时离线制作前史，发布运行时不会调用。
 
 ## 存档
 
@@ -69,7 +69,7 @@
 
 ## 开发与验证
 
-游玩仍无需构建或安装依赖。游戏源码统一维护在 `src/`，按 `core/`（基础规则）、`systems/`（玩法系统）、`story/`（剧情）、`ui/`（界面）和 `data/`（数据）分区；已有独立模块保留原路径。具体入口见[代码目录与维护流程](docs/source-layout.md)。
+游玩仍无需构建或安装依赖。游戏源码统一维护在 `src/`，按 `core/`（基础规则）、`systems/`（玩法系统）、`story/`（剧情）、`ui/`（界面）和 `data/`（数据）分区。修改前先读 [AGENTS.md](AGENTS.md)，具体入口见[代码目录与维护流程](docs/source-layout.md)。
 
 改完运行 `npm run sync`，同步到可直接打开的 `index.html`。`src/modules.json` 记录原有执行顺序；同步会检查漏文件、重复文件和标记顺序。不要直接修改 HTML 中的生成区；页面外壳、样式和字体声明仍在 HTML 中维护。
 
@@ -78,5 +78,7 @@
 `npm run test:browser` 是可选的真实浏览器检查，需要可用的 Playwright 和 Chromium。可用 `PAW_PLAYWRIGHT` 指定已有 Playwright 包路径、`PAW_BROWSER` 指定浏览器可执行文件。它使用独立临时会话，检查导出下载、导入确认、损坏存档恢复、待选事件刷新、继承许诺与失约结算、历史结果及 320px 手机界面；截图保存在忽略提交的 `.test-output/` 中。
 
 改了游戏里的文字后运行 `python D:/Minigame/_workflow/tools/subset_font.py .` 更新字体子集。
+
+报错行号定位：`npm run locate -- 行号:列号`。需使用报错对应版本的 HTML；旧构建可加 `--html 路径`。如果发现直接修改过 HTML 生成区，先把修改迁回源码，再同步。
 
 设计稿见 `DESIGN.md`，史料 / 视觉 / 遗传学资料见 `docs/`。本轮功能、入口及修复说明见 [交付记录](docs/delivery-2026-10-02.md)，具体规则见 [姻亲与继承](docs/kinship-politics.md) 和 [历史后果](docs/history-effects.md)。
