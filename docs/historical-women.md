@@ -44,6 +44,6 @@
 
 ## 维护与验证
 
-规则在 `src/historical-women.js`，图片目录在 `src/art-manifest.js`；使用 `npm run sync` 嵌入发布 HTML。立绘384×512、头像192×192，脸部裁切逐张记录于 `art/face-crops.json`。固定外观只在创建时赋值。
+规则在 `src/story/historical-women.js`，图片目录在 `src/data/art-manifest.js`；使用 `npm run sync` 嵌入发布 HTML。立绘384×512、头像192×192，脸部裁切逐张记录于 `art/face-crops.json`。固定外观只在创建时赋值。
 
 `tests/historical-women.js` 覆盖八人入场边界、五个晚期预设、原婚配入口、指定家人好感、付费和重复回调、失效预约、婚后出生与真实遗传、旧档和玩家关系保护。浏览器套件检查寻访、立绘、赴约、生平以及320px手机界面。

@@ -1,10 +1,10 @@
 # 历代经历与天下影响
 
-`src/history-effects.js` 将实际结算与提示文本分开。它不修改行动结果、随机数、奖励、秘密或血缘，只记录已经发生的公开变化。
+`src/systems/history-effects.js` 将实际结算与提示文本分开。它不修改行动结果、随机数、奖励、秘密或血缘，只记录已经发生的公开变化。
 
 ## 接线
 
-在 `src/dynasty.js` 之后嵌入模块，并加入 `tools/sync-inline.cjs` 的模块表。
+在 `src/systems/dynasty.js` 之后嵌入模块，顺序由 `src/modules.json` 记录。
 
 `choose(m, o)` 保留可用性检查、移除当前窗口、人物 note；将原来的 chronicle 与 fx/post 调用替换为：
 

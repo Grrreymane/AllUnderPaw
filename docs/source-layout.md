@@ -17,13 +17,14 @@
 | `src/systems/` | 行动、修行与继承、仕途、社交、计谋、对决、吕不韦竞争 |
 | `src/story/` | 第一幕、家庭事件、第二幕、第三幕、楚汉和剧本选择 |
 | `src/ui/` | 输入、声音、场景、人物外形、窗口、主界面、渲染、分享与报错 |
-| `src/data/names.js` | 姓名库 |
-| `src/art-manifest.js`、`src/art.js` | 图片目录、CG及特殊立绘 |
-| `src/historical-women.js` | 女性名人、分期登场和家人赴约 |
-| `src/kinship-politics.js` | 联姻后援、继承承诺及履约后果 |
-| `src/history-effects.js`、`src/dynasty.js` | 历史后果、纪事和目标解释 |
-| `src/persistence.js` | 存档校验、备份、导入导出与存档界面 |
-| `src/scenario-presets.js` | 经核对的固定前史快照，由工具离线生成 |
+| `src/data/` | 姓名库、美术清单、生成的剧本预设 |
+| `src/ui/action-list.js` | 行动按钮及列表绘制，与 `systems/actions.js` 的玩法逻辑区分 |
+| `src/data/art-manifest.js`、`src/ui/art.js` | 图片目录、CG及特殊立绘 |
+| `src/story/historical-women.js` | 女性名人、分期登场和家人赴约 |
+| `src/systems/kinship-politics.js` | 联姻后援、继承承诺及履约后果 |
+| `src/systems/history-effects.js`、`src/systems/dynasty.js` | 历史后果、纪事和目标解释 |
+| `src/core/persistence.js` | 存档校验、备份、导入导出与存档界面 |
+| `src/data/scenario-presets.js` | 经核对的固定前史快照，由工具离线生成 |
 | `src/boot.js` | 游戏启动、测试入口与逐帧调度 |
 | `src/modules.json` | 全部源码的嵌入顺序清单 |
 
@@ -41,7 +42,7 @@
 
 新增模块必须在 `src/modules.json` 和 HTML 对应位置同时添加成对边界，顺序保持一致。所有 `src/` 下的 `.js` 都需要登记；嵌套边界、重复模块、缺少文件、漏登记文件和未同步内容都会导致检查失败。系统钩子和顶层代码对顺序敏感，不能按字母排序清单或直接改成异步加载。
 
-剧本生成仍使用原来的 `tools/build-scenarios.js` 和 `src/scenario-presets.js`。它是离线前史维护步骤，本轮没有重跑或更改预设。存档格式、键名及迁移规则也没有变化。
+剧本生成仍使用原来的 `tools/build-scenarios.js` 和 `src/data/scenario-presets.js`。它是离线前史维护步骤，本轮没有重跑或更改预设。存档格式、键名及迁移规则也没有变化。
 
 ## 本轮验证记录
 
@@ -51,4 +52,14 @@
 - 原浏览器套件覆盖存档恢复、CG、立绘、继承后果、女性人物赴约和320px手机布局。
 - 剧本选择与女性立绘手机截图逐像素一致；标题截图另作目视核对。
 
-已有模块的历史文档和美术路径保留可用；新目录不增加玩家端网络请求、依赖安装或构建步骤。
+美术资源路径保留不变；新目录不增加玩家端网络请求、依赖安装或构建步骤。
+
+## Review 后续整理（2026-10-05）
+
+原有8个根目录模块现已归入 `core/`、`systems/`、`story/`、`ui/` 和 `data/`，上表采用最新路径；原 `ui/actions.js` 更名为 `ui/action-list.js`。文件内容和嵌入顺序不变，预设只搬移、不重新生成。维护入口为项目根目录的 `AGENTS.md` 和 `CLAUDE.md`。
+
+**源码同步不等于双向合并。** 如果直接编辑过 HTML 的生成区，必须先比较并迁回对应源码，再运行同步。`--check` 只报告不一致，不能判断哪一侧才是应保留的修改。
+
+报错行号可用 `npm run locate -- 9000:31` 换算为 `src/...js:行:列`。位置从1开始，列号不变，边界注释和页面外壳仍返回 HTML 位置。默认会检查本地 HTML 是否已与源码同步，不会为了定位而改写文件。
+
+线上报错必须使用**同一版本**的发布 HTML。若当前代码已经更新，保存当时的 HTML 后使用 `npm run locate -- 9000:31 --html 路径`；定位结果对应该版本的源码，不能直接套用现在的行号。工具不执行传入的 HTML。

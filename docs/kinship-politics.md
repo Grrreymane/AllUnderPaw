@@ -39,7 +39,7 @@
 
 ## 接入与验证
 
-实现位于 `src/kinship-politics.js`。`kinPoliticsScore` 为只读函数，供 `leanOf` 和 `courtGap` 共用。`kinOnMarriage`、`kinOnDivorce`、`kinOnBirth`、`kinOnHeirChange`、`kinOnSuccession` 在已有实际操作完成的位置接入；交接钩子在修改玩家角色之前执行，允许前任家主已经死亡。
+实现位于 `src/systems/kinship-politics.js`。`kinPoliticsScore` 为只读函数，供 `leanOf` 和 `courtGap` 共用。`kinOnMarriage`、`kinOnDivorce`、`kinOnBirth`、`kinOnHeirChange`、`kinOnSuccession` 在已有实际操作完成的位置接入；交接钩子在修改玩家角色之前执行，允许前任家主已经死亡。
 
 `validateKinPolitics` 检查存档结构、数组上限、数值与记录类型。载入钩子不会进行继承结算。婚姻最多记录 128 组，承诺最多 128 份，临时影响最多 64 条；记录读取不会修改世界状态。
 

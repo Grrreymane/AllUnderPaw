@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "sync": "node tools/sync-inline.cjs",
-    "test": "node tests/source-layout.cjs && node tools/sync-inline.cjs --check && node tools/test.cjs",
+    "test": "node tests/source-layout.cjs && node tools/sync-inline.cjs --check && node tests/source-location.cjs && node tools/test.cjs",
+    "locate": "node tools/locate-source.cjs",
     "test:browser": "node tests/browser.cjs"
   },
   "engines": { "node": ">=18" }
