@@ -53,6 +53,7 @@ function writeWorld(raw, rotate = true) {
     if (rotate && old && old.t !== next.t) localStorage.setItem(SAVE + 'w_bak', previous);
     localStorage.setItem(SAVE + 'w', raw);
     SAVE_STATUS.error = ''; SAVE_STATUS.pending = false; TSAVE = undefined;
+    reportProgress();
     return true;
   } catch (e) {
     saveProblem('进度未能保存。点左上角日期，导出存档留底。');
@@ -96,6 +97,20 @@ function prepareWorld(d) {
 function activateWorld(d) {
   W = d; state = 'game'; resetScreen(); SAVE_STATUS.pending = false; scenOpen = false;
   LOOKC.clear(); PORT.clear(); MINI.clear(); SCN.clear(); NOTE_K = -1; FARC.t = -1; logSeen = logKey(); TSAVE = undefined;
+  reportProgress();
+}
+// AI Made Games platform: inside the site's in-site player, report a one-line progress summary
+// that shows as "your save" on the game page. Does nothing when the game runs anywhere else.
+var platformEmbed = window.parent !== window, platformTimer = 0, platformLast = '';
+function reportProgress() {
+  if (!platformEmbed) return;
+  clearTimeout(platformTimer);
+  platformTimer = setTimeout(() => {
+    const text = W && state === 'game' ? '狸家已到' + yearTxt(W.t) + ' · 官至' + RANKS[W.rank] : '';
+    if (!text || text === platformLast) return;
+    platformLast = text;
+    try { window.parent.postMessage({ source: 'aimadegames', v: 1, type: 'progress', text: text }, '*'); } catch (e) {}
+  }, 1500);
 }
 function loadGame() {
   try {
