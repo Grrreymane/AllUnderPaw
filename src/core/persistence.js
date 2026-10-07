@@ -109,7 +109,9 @@ function reportProgress() {
     const text = W && state === 'game' ? '狸家已到' + yearTxt(W.t) + ' · 官至' + RANKS[W.rank] : '';
     if (!text || text === platformLast) return;
     platformLast = text;
-    try { window.parent.postMessage({ source: 'aimadegames', v: 1, type: 'progress', text: text }, '*'); } catch (e) {}
+    // The platform's English edition ships a translation runtime; translate the line there too.
+    const shown = window.GameI18n ? window.GameI18n.translate(text) : text;
+    try { window.parent.postMessage({ source: 'aimadegames', v: 1, type: 'progress', text: shown.slice(0, 120) }, '*'); } catch (e) {}
   }, 1500);
 }
 function loadGame() {
